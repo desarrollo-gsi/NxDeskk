@@ -15,4 +15,10 @@
     <ProjectReference Include="..\NxDesk.Core\NxDesk.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Update="Hubs\SignalingHub.cs">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Compile>
+  </ItemGroup>
+
 </Project>
