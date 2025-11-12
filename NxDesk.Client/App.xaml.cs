@@ -9,6 +9,7 @@ namespace NxDesk.Client
     /// </summary>
     public partial class App : Application
     {
+
     }
 
 }

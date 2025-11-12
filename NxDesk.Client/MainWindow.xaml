@@ -6,7 +6,28 @@
         xmlns:local="clr-namespace:NxDesk.Client"
         mc:Ignorable="d"
         Title="MainWindow" Height="450" Width="800">
-    <Grid>
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+            <TextBlock Text="Host ID (Room ID):" VerticalAlignment="Center" Margin="5"/>
+            <TextBox x:Name="RoomIdTextBox" Width="200" Text="test-room"/>
+            <Button x:Name="ConnectButton" Content="Conectar" Click="ConnectButton_Click" Margin="10,0"/>
+        </StackPanel>
+
+        <Border Grid.Row="2" BorderBrush="Black" BorderThickness="1">
+            <Image x:Name="VideoImage" Stretch="Uniform"
+               MouseMove="VideoImage_MouseMove"
+               MouseDown="VideoImage_MouseDown"
+               MouseUp="VideoImage_MouseUp"
+               MouseWheel="VideoImage_MouseWheel" />
+        </Border>
+
+        <TextBlock Grid.Row="3" x:Name="StatusTextBlock" Text="Desconectado."/>
     </Grid>
 </Window>

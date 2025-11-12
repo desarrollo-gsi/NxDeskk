@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36603.0 d17.14
+VisualStudioVersion = 17.14.36603.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NxDesk.Client", "NxDesk.Client\NxDesk.Client.csproj", "{3BDACBD7-D166-4B30-8DF4-5DBF36F0A041}"
 EndProject
@@ -9,9 +9,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NxDesk.Application", "NxDes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NxDesk.Core", "NxDesk.Core\NxDesk.Core.csproj", "{6174169A-771C-41D8-8837-FCD652830055}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NxDesk.HostService", "NxDesk.HostService\NxDesk.HostService.vcxproj", "{37340E84-C75F-4431-9F89-F8C259E849A0}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NxDesk.SignalingServer", "NxDesk.SignalingServer\NxDesk.SignalingServer.csproj", "{43676978-2602-4795-A91E-8382543B83AD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NxDesk.Host", "NxDesk.Host\NxDesk.Host.csproj", "{A488BA9B-77F5-4D2A-9517-7B869174A0F8}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -59,18 +59,6 @@ Global
 		{6174169A-771C-41D8-8837-FCD652830055}.Release|x64.Build.0 = Release|Any CPU
 		{6174169A-771C-41D8-8837-FCD652830055}.Release|x86.ActiveCfg = Release|Any CPU
 		{6174169A-771C-41D8-8837-FCD652830055}.Release|x86.Build.0 = Release|Any CPU
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Debug|Any CPU.ActiveCfg = Debug|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Debug|Any CPU.Build.0 = Debug|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Debug|x64.ActiveCfg = Debug|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Debug|x64.Build.0 = Debug|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Debug|x86.ActiveCfg = Debug|Win32
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Debug|x86.Build.0 = Debug|Win32
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Release|Any CPU.ActiveCfg = Release|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Release|Any CPU.Build.0 = Release|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Release|x64.ActiveCfg = Release|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Release|x64.Build.0 = Release|x64
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Release|x86.ActiveCfg = Release|Win32
-		{37340E84-C75F-4431-9F89-F8C259E849A0}.Release|x86.Build.0 = Release|Win32
 		{43676978-2602-4795-A91E-8382543B83AD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{43676978-2602-4795-A91E-8382543B83AD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{43676978-2602-4795-A91E-8382543B83AD}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -83,6 +71,18 @@ Global
 		{43676978-2602-4795-A91E-8382543B83AD}.Release|x64.Build.0 = Release|Any CPU
 		{43676978-2602-4795-A91E-8382543B83AD}.Release|x86.ActiveCfg = Release|Any CPU
 		{43676978-2602-4795-A91E-8382543B83AD}.Release|x86.Build.0 = Release|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Debug|x64.Build.0 = Debug|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Debug|x86.Build.0 = Debug|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Release|x64.ActiveCfg = Release|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Release|x64.Build.0 = Release|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Release|x86.ActiveCfg = Release|Any CPU
+		{A488BA9B-77F5-4D2A-9517-7B869174A0F8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
