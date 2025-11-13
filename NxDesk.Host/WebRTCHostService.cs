@@ -266,7 +266,6 @@ namespace NxDesk.Host
 
                     if (input == null) return;
 
-                    // TODO: Implementar llamadas nativas de Windows (SendInput)
                     _logger.LogInformation("Input Recibido: {Type} X:{X} Y:{Y} Key:{Key}",
                         input.EventType, input.X, input.Y, input.Key);
                 }
