@@ -152,16 +152,13 @@ namespace NxDesk.Host
             {
                 _dataChannel = dc;
 
-                // --- NUEVO: Enviar info de pantallas cuando el canal ABRA ---
                 _dataChannel.onopen += () =>
                 {
                     _logger.LogInformation("DataChannel abierto. Enviando información de pantallas...");
                     try
                     {
-                        // 1. Crear la lista de nombres
                         var screenNames = _allScreens.Select((s, i) => $"Pantalla {i + 1} ({s.Bounds.Width}x{s.Bounds.Height})").ToList();
 
-                        // 2. Crear el payload
                         var screenInfo = new ScreenInfoPayload { ScreenNames = screenNames };
 
                         // 3. Enviar el mensaje envuelto
@@ -293,13 +290,12 @@ namespace NxDesk.Host
             {
                 Type = "answer",
                 Payload = answer.sdp,
-                SenderId = _hubConnection.ConnectionId // ¡IMPORTANTE!
+                SenderId = _hubConnection.ConnectionId 
             };
 
             await _hubConnection.InvokeAsync("RelayMessage", _roomId, answerMsg);
             _logger.LogInformation("Answer enviada.");
         }
-
 
         private void OnInputReceived(RTCDataChannel dc, DataChannelPayloadProtocols protocol, byte[] data)
         {
