@@ -1,6 +1,13 @@
 ﻿using NxDesk.Client.Services;
+using NxDesk.Client.Views;
+using NxDesk.Client.Views.WelcomeView.Models;
+using NxDesk.Client.Views.WelcomeView.ViewModel;
 using NxDesk.Core.DTOs;
+using System;
+using System.Collections.Generic; // <--- AÑADIDO
+using System.Diagnostics;       // <--- AÑADIDO
 using System.Windows;
+using System.Windows.Controls;    // <--- AÑADIDO
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 
@@ -10,10 +17,13 @@ namespace NxDesk.Client
     {
         private readonly SignalingService _signalingService;
         private readonly WebRTCService _webRTCService;
+        private WelcomeViewControl _welcomeView;
+        private RemoteViewControl? _remoteView;
 
         public MainWindow()
         {
             InitializeComponent();
+
             _signalingService = new SignalingService();
             _webRTCService = new WebRTCService(_signalingService);
             _webRTCService.OnVideoFrameReady += UpdateVideoFrame;
@@ -21,92 +31,185 @@ namespace NxDesk.Client
             this.Closing += async (s, e) => await _webRTCService.DisposeAsync();
             this.KeyDown += MainWindow_KeyDown;
             this.KeyUp += MainWindow_KeyUp;
-            VideoImage.Focusable = true;
-            VideoImage.Focus();
+
+            _welcomeView = new WelcomeViewControl();
+
+            if (_welcomeView.DataContext is WelcomeViewModel vm)
+            {
+                vm.OnDeviceSelected += HandleDeviceSelected;
+            }
+
+            ContentArea.Content = _welcomeView;
+
+            // Conecta el botón de Conectar (de la barra Pre-Sesión)
+            ConnectButton.Click += ConnectButton_Click;
+
+            // Conecta el botón de Desconectar (de la barra En-Sesión)
+            DisconnectButton.Click += DisconnectButton_Click;
         }
+
+        // --- 1. MÉTODO DE CONEXIÓN PRIVADO ---
+        private void StartConnection(string connectionId)
+        {
+            if (string.IsNullOrWhiteSpace(connectionId))
+            {
+                StatusTextBlock.Text = "Error: El ID no puede estar vacío.";
+                return;
+            }
+
+            Dispatcher.Invoke(async () =>
+            {
+                _remoteView = new RemoteViewControl();
+                _remoteView.OnInputEvent += ev => _webRTCService.SendInputEvent(ev);
+
+                ContentArea.Content = _remoteView;
+
+                // --- CAMBIAR LA VISIBILIDAD DE LAS BARRAS DE HERRAMIENTAS ---
+                PreSessionControls.Visibility = Visibility.Collapsed;
+                InSessionControls.Visibility = Visibility.Visible;
+                // -------------------------------------------------------------
+
+                await _webRTCService.StartConnectionAsync(connectionId);
+
+                // --- SIMULACIÓN DE RECEPCIÓN DE PANTALLAS ---
+                // TODO: Reemplazar esto con la información real del Host
+                // que deberías recibir a través del DataChannel o al conectar.
+                var dummyScreenNames = new List<string> { "Pantalla 1", "Pantalla 2" };
+                PopulateScreenButtons(dummyScreenNames);
+                // --------------------------------------------------
+            });
+        }
+
+        // --- 2. MÉTODO DE CLIC DE TARJETA ---
+        private void HandleDeviceSelected(DiscoveredDevice device)
+        {
+            StartConnection(device.ConnectionID);
+        }
+
+        // --- 3. MÉTODO DE CLIC DE BOTÓN CONECTAR ---
+        private void ConnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            StartConnection(RoomIdTextBox.Text);
+        }
+
+        // --- 4. NUEVO MÉTODO PARA DESCONECTAR ---
+        private void DisconnectButton_Click(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.Invoke(async () =>
+            {
+                // 1. Cierra la conexión WebRTC
+                await _webRTCService.DisposeAsync();
+
+                // 2. Muestra la pantalla de bienvenida
+                ContentArea.Content = _welcomeView;
+
+                // 3. Restaura la barra de herramientas superior
+                InSessionControls.Visibility = Visibility.Collapsed;
+                PreSessionControls.Visibility = Visibility.Visible;
+
+                // 4. Limpiar botones dinámicos
+                ScreenButtonsItemsControl.Items.Clear();
+
+                // 5. Resetea el texto de estado
+                StatusTextBlock.Text = "Desconectado. Esperando conexión...";
+            });
+        }
+
+        // --- 5. NUEVO MÉTODO PARA CAMBIAR DE PANTALLA (Placeholder) ---
+        private void SwitchScreen(int screenIndex)
+        {
+            // TODO: Enviar un mensaje al Host a través del DataChannel
+            // para solicitar el cambio de pantalla.
+
+            string screenName = $"Pantalla {screenIndex + 1}";
+            StatusTextBlock.Text = $"Cambiando a {screenName}...";
+            Debug.WriteLine($"[NxDesk Client] Solicitando cambio a {screenName}");
+
+            // Ejemplo de cómo podrías enviar el evento (requiere implementar en WebRTCService)
+            // _webRTCService.SendInputEvent(new InputEvent 
+            // { 
+            //    EventType = "control", 
+            //    Command = "switch_screen", 
+            //    Value = screenIndex 
+            // });
+        }
+
+        // --- 6. NUEVO MÉTODO PARA GENERAR BOTONES DE PANTALLA ---
+        private void PopulateScreenButtons(List<string> screenNames)
+        {
+            // Asegurarnos de que corra en el Hilo de UI
+            Dispatcher.Invoke(() =>
+            {
+                ScreenButtonsItemsControl.Items.Clear(); // Limpiar botones anteriores
+
+                for (int i = 0; i < screenNames.Count; i++)
+                {
+                    var screenName = screenNames[i];
+                    var screenIndex = i; // Importante: Capturar el índice para el lambda
+
+                    Button btn = new Button
+                    {
+                        Content = screenName,
+                        Style = (Style)FindResource("ModernTextButton"),
+                        Margin = new Thickness(5, 0, 5, 0)
+                    };
+
+                    // Asignar el evento Click para llamar a tu método SwitchScreen
+                    btn.Click += (s, e) => SwitchScreen(screenIndex);
+
+                    ScreenButtonsItemsControl.Items.Add(btn);
+                }
+            });
+        }
+
+        // --- (El resto de tus métodos) ---
 
         private void UpdateStatus(string status)
         {
             Dispatcher.Invoke(() => StatusTextBlock.Text = status);
         }
 
-        private void UpdateVideoFrame(WriteableBitmap bitmap)
+        private void UpdateVideoFrame(BitmapSource bitmap)
         {
-            Dispatcher.Invoke(() => VideoImage.Source = bitmap);
-        }
-
-        private async void ConnectButton_Click(object sender, RoutedEventArgs e)
-        {
-            VideoImage.Focus(); 
-            await _webRTCService.StartConnectionAsync(RoomIdTextBox.Text);
-        }
-
-        private void SendInput(InputEvent input)
-        {
-            _webRTCService.SendInputEvent(input);
-        }
-
-        private void VideoImage_MouseMove(object sender, MouseEventArgs e)
-        {
-            var pos = e.GetPosition(VideoImage);
-            var normalizedX = pos.X / VideoImage.ActualWidth;
-            var normalizedY = pos.Y / VideoImage.ActualHeight;
-
-            if (normalizedX < 0 || normalizedX > 1 || normalizedY < 0 || normalizedY > 1) return;
-
-            SendInput(new InputEvent
+            Dispatcher.Invoke(() =>
             {
-                EventType = "mousemove",
-                X = normalizedX,
-                Y = normalizedY
-            });
-        }
-
-        private void VideoImage_MouseDown(object sender, MouseButtonEventArgs e)
-        {
-            var pos = e.GetPosition(VideoImage);
-            SendInput(new InputEvent
-            {
-                EventType = "mousedown",
-                Button = e.ChangedButton.ToString().ToLower(), 
-                X = pos.X / VideoImage.ActualWidth,
-                Y = pos.Y / VideoImage.ActualHeight
-            });
-        }
-
-        private void VideoImage_MouseUp(object sender, MouseButtonEventArgs e)
-        {
-            var pos = e.GetPosition(VideoImage);
-            SendInput(new InputEvent
-            {
-                EventType = "mouseup",
-                Button = e.ChangedButton.ToString().ToLower(),
-                X = pos.X / VideoImage.ActualWidth,
-                Y = pos.Y / VideoImage.ActualHeight
-            });
-        }
-
-        private void VideoImage_MouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            SendInput(new InputEvent
-            {
-                EventType = "mousewheel",
-                Delta = e.Delta 
+                if (_remoteView != null)
+                    _remoteView.SetFrame(bitmap);
             });
         }
 
         private void MainWindow_KeyDown(object sender, KeyEventArgs e)
         {
-            SendInput(new InputEvent
+            if (Keyboard.FocusedElement is System.Windows.Controls.TextBox)
+            {
+                return;
+            }
+
+            if (ContentArea.Content != _remoteView || _remoteView == null)
+            {
+                return;
+            }
+
+            _webRTCService.SendInputEvent(new InputEvent
             {
                 EventType = "keydown",
-                Key = e.Key.ToString() 
+                Key = e.Key.ToString()
             });
         }
 
         private void MainWindow_KeyUp(object sender, KeyEventArgs e)
         {
-            SendInput(new InputEvent
+            if (Keyboard.FocusedElement is System.Windows.Controls.TextBox)
+            {
+                return;
+            }
+
+            if (ContentArea.Content != _remoteView || _remoteView == null)
+            {
+                return;
+            }
+
+            _webRTCService.SendInputEvent(new InputEvent
             {
                 EventType = "keyup",
                 Key = e.Key.ToString()
