@@ -1,13 +1,14 @@
-﻿using NxDesk.Client.Services;
+﻿// Contenido completo de NxDesk.Client/MainWindow.xaml.cs
+using NxDesk.Client.Services;
 using NxDesk.Client.Views;
-using NxDesk.Client.Views.WelcomeView.Models;
 using NxDesk.Client.Views.WelcomeView.ViewModel;
 using NxDesk.Core.DTOs;
+using NxDesk.Core.Models; // <--- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!!
 using System;
-using System.Collections.Generic; // <--- AÑADIDO
-using System.Diagnostics;       // <--- AÑADIDO
+using System.Collections.Generic; // <-- AÑADIDO
+using System.Diagnostics;
 using System.Windows;
-using System.Windows.Controls;    // <--- AÑADIDO
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 
@@ -81,7 +82,7 @@ namespace NxDesk.Client
         }
 
         // --- 2. MÉTODO DE CLIC DE TARJETA ---
-        private void HandleDeviceSelected(DiscoveredDevice device)
+        private void HandleDeviceSelected(DiscoveredDevice device) // <-- Esto ahora compila
         {
             StartConnection(device.ConnectionID);
         }

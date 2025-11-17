@@ -1,21 +1,41 @@
-﻿using Microsoft.AspNetCore.SignalR.Client;
+﻿// Contenido completo de NxDesk.Client/Services/SignalingService.cs
+using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration; // <-- Paquete NuGet requerido
 using NxDesk.Core.DTOs;
+using System; // <-- AÑADIDO para AppDomain
 using System.Diagnostics;
+using System.IO; // <-- AÑADIDO para SetBasePath
 using System.Net.Http;
+using System.Threading.Tasks; // <-- AÑADIDO
 
 namespace NxDesk.Client.Services
 {
     public class SignalingService : IAsyncDisposable
     {
-        private const string SERVER_URL = "https://localhost:7099/signalinghub";
+        private readonly string _serverUrl;
         private HubConnection _hubConnection;
         private string _roomId;
-        public event Func<SdpMessage, Task> OnMessageReceived; 
+        public event Func<SdpMessage, Task> OnMessageReceived;
 
         public SignalingService()
         {
+            // --- AÑADIDO: Leer config ---
+            var config = new ConfigurationBuilder()
+                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory) // Necesita 'using System;'
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .Build();
+
+            // Esto funcionará después de instalar los NuGets
+            _serverUrl = config.GetConnectionString("SignalR:ServerUrl");
+            if (string.IsNullOrEmpty(_serverUrl) || _serverUrl.Contains("[IP_DE_TU_SERVIDOR]"))
+            {
+                Debug.WriteLine("[SignalR] SignalR:ServerUrl no válido en appsettings.json. Usando localhost.");
+                _serverUrl = "https://localhost:7099/signalinghub"; // Fallback
+            }
+            // -----------------------------
+
             _hubConnection = new HubConnectionBuilder()
-                .WithUrl(SERVER_URL, options =>
+                .WithUrl(_serverUrl, options =>
                 {
                     options.HttpMessageHandlerFactory = (handler) =>
                     {
@@ -38,7 +58,7 @@ namespace NxDesk.Client.Services
                 }
             });
         }
-            
+
         public async Task<bool> ConnectAsync(string roomId)
         {
             if (_hubConnection.State == HubConnectionState.Connected)
@@ -51,12 +71,12 @@ namespace NxDesk.Client.Services
             {
                 await _hubConnection.StartAsync();
                 await _hubConnection.InvokeAsync("JoinRoom", _roomId);
-                return true; 
+                return true;
             }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error de conexión de SignalR: {ex.Message}");
-                return false; 
+                return false;
             }
         }
 

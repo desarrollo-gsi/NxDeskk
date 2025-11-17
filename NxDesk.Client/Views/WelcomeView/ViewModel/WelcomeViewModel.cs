@@ -1,10 +1,10 @@
-﻿using System;
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using NxDesk.Client.Services;
 using System.Windows;
-using NxDesk.Client.Views.WelcomeView.Models;
+using NxDesk.Core.Models; 
+using NxDesk.Core.Services;
 using System.Diagnostics;
 
 namespace NxDesk.Client.Views.WelcomeView.ViewModel

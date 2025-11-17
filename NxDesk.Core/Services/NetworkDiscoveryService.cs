@@ -1,11 +1,10 @@
-﻿using System;
-using System.Net;
+﻿using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using NxDesk.Client.Views.WelcomeView.Models;
+using NxDesk.Core.Models;
 using System.Diagnostics;
 
-namespace NxDesk.Client.Services
+namespace NxDesk.Core.Services
 {
     public class NetworkDiscoveryService
     {
@@ -82,16 +81,16 @@ namespace NxDesk.Client.Services
 
             try
             {
-                Debug.WriteLine("[NxDesk Discovery] Broadcaster iniciado."); 
+                Debug.WriteLine("[NxDesk Discovery] Broadcaster iniciado.");
                 while (true)
                 {
                     await broadcaster.SendAsync(data, data.Length, broadcastAddress);
                     await Task.Delay(5000);
-                }                                                                                                                                                
+                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[NxDesk Discovery] FALLO EL BROADCASTER: {ex.Message}"); 
+                Debug.WriteLine($"[NxDesk Discovery] FALLO EL BROADCASTER: {ex.Message}");
             }
         }
 

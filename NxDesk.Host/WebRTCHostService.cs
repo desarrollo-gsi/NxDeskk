@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.SignalR.Client;
 using Newtonsoft.Json;
 using NxDesk.Core.DTOs;
+using NxDesk.Core.Services;
 using NxDesk.Host.Services;
 using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
@@ -16,8 +17,10 @@ namespace NxDesk.Host
 {
     public class WebRTCHostService : IDisposable
     {
-        private const string SERVER_URL = "https://localhost:7099/signalinghub";
         private readonly string _roomId;
+        private readonly string _serverUrl;
+        private readonly IdentityService _identityService; 
+        private NetworkDiscoveryService _discoveryService; 
 
         private readonly ILogger<WebRTCHostService> _logger;
         private HubConnection _hubConnection;
@@ -29,11 +32,19 @@ namespace NxDesk.Host
         private int _currentScreenIndex = 0;
         private Screen[] _allScreens;
 
-        public WebRTCHostService(ILogger<WebRTCHostService> logger)
+        public WebRTCHostService(ILogger<WebRTCHostService> logger, IConfiguration configuration)
         {
             _logger = logger;
-            var identityService = new IdentityService();
-            _roomId = identityService.MyID;
+
+            _serverUrl = configuration.GetValue<string>("SignalR:ServerUrl");
+            if (string.IsNullOrEmpty(_serverUrl) || _serverUrl.Contains("[IP_DE_TU_SERVIDOR]"))
+            {
+                _logger.LogError("SignalR:ServerUrl no válido en appsettings.json. Usando localhost por defecto.");
+                _serverUrl = "https://localhost:7099/signalinghub"; 
+            }
+
+            _identityService = new IdentityService();
+            _roomId = _identityService.MyID;
 
             _allScreens = Screen.AllScreens;
             _logger.LogInformation("Pantallas detectadas: {ScreenCount}", _allScreens.Length);
@@ -43,19 +54,24 @@ namespace NxDesk.Host
             }
 
             _logger.LogInformation("IdentityService cargado. Este Host ID es: {HostID}", _roomId);
-        }
 
+            _discoveryService = new NetworkDiscoveryService(_identityService.MyID, _identityService.MyAlias);
+        }
 
         public async Task StartAsync()
         {
             _logger.LogInformation("Iniciando servicio de Host NxDesk.");
+
+            _discoveryService.Start(); 
+            _logger.LogInformation("Servicio de descubrimiento de Host iniciado.");
+
             await InitializeSignalR();
         }
 
         private async Task InitializeSignalR()
         {
             _hubConnection = new HubConnectionBuilder()
-                .WithUrl(SERVER_URL, options =>
+                .WithUrl(_serverUrl, options => 
                 {
                     options.HttpMessageHandlerFactory = (handler) =>
                     {
@@ -80,7 +96,7 @@ namespace NxDesk.Host
                 await _hubConnection.StartAsync();
 
                 _logger.LogInformation("Conectado a SignalR. Uniéndose a la sala: {RoomId}", _roomId);
-                await _hubConnection.InvokeAsync("JoinRoom", _roomId); 
+                await _hubConnection.InvokeAsync("JoinRoom", _roomId);
             }
             catch (Exception ex)
             {
@@ -176,7 +192,6 @@ namespace NxDesk.Host
                         _logger.LogError(ex, "Error al enviar información de pantallas.");
                     }
                 };
-                // -----------------------------------------------------
 
                 dc.onmessage += (RTCDataChannel channel, DataChannelPayloadProtocols protocol, byte[] data) =>
                 {
@@ -202,6 +217,7 @@ namespace NxDesk.Host
 
             await Task.CompletedTask;
         }
+
         private void StartScreenCapture()
         {
             _isCapturing = true;
@@ -290,7 +306,7 @@ namespace NxDesk.Host
             {
                 Type = "answer",
                 Payload = answer.sdp,
-                SenderId = _hubConnection.ConnectionId 
+                SenderId = _hubConnection.ConnectionId
             };
 
             await _hubConnection.InvokeAsync("RelayMessage", _roomId, answerMsg);
@@ -367,6 +383,8 @@ namespace NxDesk.Host
             _screenCaptureTimer?.Dispose();
             _dataChannel?.close();
             _peerConnection?.close();
+
+            _discoveryService?.Stop(); 
 
             _hubConnection?.DisposeAsync().AsTask().Wait();
         }
