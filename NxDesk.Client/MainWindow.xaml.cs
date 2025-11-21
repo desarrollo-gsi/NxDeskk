@@ -2,19 +2,20 @@
 using NxDesk.Client.Views;
 using NxDesk.Client.Views.WelcomeView.ViewModel;
 using NxDesk.Core.DTOs;
-using NxDesk.Core.Models; 
+using NxDesk.Core.Models;
 using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Collections.Generic; // Necesario para List<>
 
 namespace NxDesk.Client
 {
     public partial class MainWindow : Window
     {
-        private  SignalingService _signalingService;
-        private  WebRTCService _webRTCService;
+        private SignalingService _signalingService;
+        private WebRTCService _webRTCService;
         private WelcomeViewControl _welcomeView;
         private RemoteViewControl? _remoteView;
 
@@ -50,11 +51,17 @@ namespace NxDesk.Client
 
             Dispatcher.Invoke(async () =>
             {
+                // Limpiar botones anteriores por si acaso
+                ScreenButtonsItemsControl.Items.Clear();
+
                 _signalingService = new SignalingService();
                 _webRTCService = new WebRTCService(_signalingService);
 
                 _webRTCService.OnVideoFrameReady += UpdateVideoFrame;
                 _webRTCService.OnConnectionStateChanged += UpdateStatus;
+
+                // SUSCRIPCIÓN AL NUEVO EVENTO DE PANTALLAS
+                _webRTCService.OnScreensInfoReceived += PopulateScreenButtons;
 
                 _remoteView = new RemoteViewControl();
                 _remoteView.OnInputEvent += ev => _webRTCService.SendInputEvent(ev);
@@ -65,12 +72,13 @@ namespace NxDesk.Client
 
                 await _webRTCService.StartConnectionAsync(connectionId);
 
-                var dummyScreenNames = new List<string> { "Pantalla 1", "Pantalla 2" };
-                PopulateScreenButtons(dummyScreenNames);
+                // YA NO USAMOS DATOS DUMMY
+                // var dummyScreenNames = new List<string> { "Pantalla 1", "Pantalla 2" };
+                // PopulateScreenButtons(dummyScreenNames);
             });
         }
 
-        private void HandleDeviceSelected(DiscoveredDevice device) 
+        private void HandleDeviceSelected(DiscoveredDevice device)
         {
             StartConnection(device.ConnectionID);
         }
@@ -88,6 +96,7 @@ namespace NxDesk.Client
                 {
                     _webRTCService.OnVideoFrameReady -= UpdateVideoFrame;
                     _webRTCService.OnConnectionStateChanged -= UpdateStatus;
+                    _webRTCService.OnScreensInfoReceived -= PopulateScreenButtons; // Desuscribir
 
                     await _webRTCService.DisposeAsync();
                     _webRTCService = null;
@@ -104,28 +113,46 @@ namespace NxDesk.Client
 
         private void SwitchScreen(int screenIndex)
         {
-
             string screenName = $"Pantalla {screenIndex + 1}";
             StatusTextBlock.Text = $"Cambiando a {screenName}...";
-            Debug.WriteLine($"[NxDesk Client] Solicitando cambio a {screenName}");
+            Debug.WriteLine($"[NxDesk Client] Solicitando cambio a {screenName} (Index: {screenIndex})");
+
+            // Enviar comando real al Host
+            if (_webRTCService != null)
+            {
+                _webRTCService.SendInputEvent(new InputEvent
+                {
+                    EventType = "control",
+                    Command = "switch_screen",
+                    Value = screenIndex
+                });
+            }
         }
 
         private void PopulateScreenButtons(List<string> screenNames)
         {
+            // Asegurarnos de estar en el hilo de la UI
             Dispatcher.Invoke(() =>
             {
-                ScreenButtonsItemsControl.Items.Clear(); 
+                ScreenButtonsItemsControl.Items.Clear();
+
+                // Si solo hay una pantalla, tal vez no quieras mostrar botones, o sí para confirmar.
+                // Aquí los mostramos siempre si llegan.
+                if (screenNames == null || screenNames.Count == 0) return;
 
                 for (int i = 0; i < screenNames.Count; i++)
                 {
-                    var screenName = screenNames[i];
-                    var screenIndex = i; 
+                    var screenName = screenNames[i]; // Ej: "Pantalla 1 (1920x1080)"
+                    var screenIndex = i;
 
                     Button btn = new Button
                     {
-                        Content = screenName,
+                        Content = (i + 1).ToString(), // Mostramos solo el número para ahorrar espacio, o screenName
+                        ToolTip = screenName, // El nombre completo en el tooltip
                         Style = (Style)FindResource("ModernTextButton"),
-                        Margin = new Thickness(5, 0, 5, 0)
+                        Margin = new Thickness(5, 0, 5, 0),
+                        Width = 30, // Botones un poco más compactos
+                        Height = 30
                     };
 
                     btn.Click += (s, e) => SwitchScreen(screenIndex);
@@ -134,7 +161,6 @@ namespace NxDesk.Client
                 }
             });
         }
-
 
         private void UpdateStatus(string status)
         {

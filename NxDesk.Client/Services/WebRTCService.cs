@@ -7,6 +7,8 @@ using System.Windows.Media.Imaging;
 using System.Windows;
 using SdpMessage = NxDesk.Core.DTOs.SdpMessage;
 using System.IO;
+using System.Text; // Necesario para Encoding
+
 namespace NxDesk.Client.Services
 {
     public class WebRTCService : IAsyncDisposable
@@ -14,16 +16,22 @@ namespace NxDesk.Client.Services
         private readonly SignalingService _signalingService;
         private RTCPeerConnection? _peerConnection;
         private RTCDataChannel? _dataChannel;
-        private WriteableBitmap? _videoBitmap;
+        // private WriteableBitmap? _videoBitmap; // No se usa actualmente
         private static readonly ILogger _logger = new Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory()
             .CreateLogger<WebRTCService>();
+
         public event Action<string>? OnConnectionStateChanged;
         public event Action<System.Windows.Media.Imaging.BitmapSource>? OnVideoFrameReady;
+
+        // NUEVO EVENTO: Notificar cuando se reciben las pantallas del host
+        public event Action<List<string>>? OnScreensInfoReceived;
+
         public WebRTCService(SignalingService signalingService)
         {
             _signalingService = signalingService;
             _signalingService.OnMessageReceived += HandleSignalingMessageAsync;
         }
+
         public async Task StartConnectionAsync(string hostId)
         {
             OnConnectionStateChanged?.Invoke("Conectando al servidor de señalización...");
@@ -34,6 +42,7 @@ namespace NxDesk.Client.Services
                 return;
             }
             OnConnectionStateChanged?.Invoke("Conectado. Iniciando WebRTC...");
+
             var config = new RTCConfiguration
             {
                 iceServers = new List<RTCIceServer>
@@ -41,7 +50,9 @@ namespace NxDesk.Client.Services
                     new RTCIceServer { urls = "stun:stun.l.google.com:19302" }
                 }
             };
+
             _peerConnection = new RTCPeerConnection(config);
+
             _peerConnection.onicecandidate += async (candidate) =>
             {
                 if (candidate != null && !string.IsNullOrWhiteSpace(candidate.candidate))
@@ -54,17 +65,20 @@ namespace NxDesk.Client.Services
                     await _signalingService.RelayMessageAsync(msg);
                 }
             };
+
             _peerConnection.onconnectionstatechange += (state) =>
             {
                 OnConnectionStateChanged?.Invoke($"P2P: {state}");
                 _logger.LogInformation($"Connection state: {state}");
             };
+
             var videoFormats = new List<VideoFormat>
             {
                 new VideoFormat(VideoCodecsEnum.VP8, 96)
             };
             var videoTrack = new MediaStreamTrack(videoFormats, MediaStreamStatusEnum.RecvOnly);
             _peerConnection.addTrack(videoTrack);
+
             _peerConnection.OnVideoFrameReceived += (endpoint, timestamp, frame, format) =>
             {
                 try
@@ -74,16 +88,14 @@ namespace NxDesk.Client.Services
                         try
                         {
                             var bitmapImage = new BitmapImage();
-
                             using (var stream = new MemoryStream(frame))
                             {
                                 bitmapImage.BeginInit();
                                 bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
                                 bitmapImage.StreamSource = stream;
                                 bitmapImage.EndInit();
-                                bitmapImage.Freeze(); 
+                                bitmapImage.Freeze();
                             }
-
                             OnVideoFrameReady?.Invoke(bitmapImage);
                         }
                         catch (Exception ex)
@@ -99,18 +111,50 @@ namespace NxDesk.Client.Services
             };
 
             _dataChannel = await _peerConnection.createDataChannel("input-channel");
+
             _dataChannel.onopen += () =>
             {
                 OnConnectionStateChanged?.Invoke("Canal de datos abierto");
                 _logger.LogInformation("Data channel abierto");
             };
+
             _dataChannel.onclose += () =>
             {
                 OnConnectionStateChanged?.Invoke("Canal de datos cerrado");
                 _logger.LogInformation("Data channel cerrado");
             };
+
+            // MANEJO DE MENSAJES ENTRANTE (INFO DE PANTALLAS)
+            _dataChannel.onmessage += (RTCDataChannel channel, DataChannelPayloadProtocols protocol, byte[] data) =>
+            {
+                if (protocol == DataChannelPayloadProtocols.WebRTC_String)
+                {
+                    try
+                    {
+                        string json = Encoding.UTF8.GetString(data);
+                        var message = JsonConvert.DeserializeObject<DataChannelMessage>(json);
+
+                        if (message != null && message.Type == "system:screen_info")
+                        {
+                            var screenInfo = JsonConvert.DeserializeObject<ScreenInfoPayload>(message.Payload);
+                            if (screenInfo != null && screenInfo.ScreenNames != null)
+                            {
+                                // Disparamos el evento en el hilo principal si es necesario, o dejamos que la UI haga el Dispatcher
+                                OnScreensInfoReceived?.Invoke(screenInfo.ScreenNames);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError($"Error procesando mensaje del DataChannel: {ex.Message}");
+                    }
+                }
+            };
+
             await CreateOfferAsync();
         }
+
+        // ... (El resto de los métodos privados: CreateOfferAsync, HandleSignalingMessageAsync permanecen igual) ...
 
         private async Task CreateOfferAsync()
         {
@@ -168,9 +212,17 @@ namespace NxDesk.Client.Services
         {
             if (_dataChannel?.readyState == RTCDataChannelState.open)
             {
-                var json = JsonConvert.SerializeObject(inputEvent);
-                _dataChannel.send(json);
-                _logger.LogInformation($"Input enviado: {inputEvent.EventType}");
+                // Empaquetamos el InputEvent dentro de un DataChannelMessage para ser consistentes
+                var payloadJson = JsonConvert.SerializeObject(inputEvent);
+
+                var messageWrapper = new DataChannelMessage
+                {
+                    Type = "input",
+                    Payload = payloadJson
+                };
+
+                var finalJson = JsonConvert.SerializeObject(messageWrapper);
+                _dataChannel.send(finalJson);
             }
             else
             {
@@ -180,7 +232,9 @@ namespace NxDesk.Client.Services
 
         public async ValueTask DisposeAsync()
         {
-            _signalingService.OnMessageReceived -= HandleSignalingMessageAsync;
+            if (_signalingService != null)
+                _signalingService.OnMessageReceived -= HandleSignalingMessageAsync;
+
             await _signalingService.DisposeAsync();
             _dataChannel?.close();
             _peerConnection?.close();
