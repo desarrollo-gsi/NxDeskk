@@ -31,11 +31,8 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="border"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="5">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"/>
+                            <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="5">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -64,12 +61,8 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="border"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="5">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"
-                                                  Margin="{TemplateBinding Padding}"/>
+                            <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="5">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -92,12 +85,8 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="border"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="5">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"
-                                                  Margin="{TemplateBinding Padding}"/>
+                            <Border x:Name="border" Background="{TemplateBinding Background}" CornerRadius="5">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -111,6 +100,123 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <Style x:Key="ModernTextBox" TargetType="TextBox">
+                <Setter Property="Background" Value="#2D2D30"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="15" BorderThickness="1" BorderBrush="#3E3E42">
+                                <ScrollViewer x:Name="PART_ContentHost"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ModernMenuItemStyle" TargetType="MenuItem">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="#E0E0E0"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Padding" Value="15,8"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="MenuItem">
+                            <Border x:Name="Bd" 
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}" 
+                                    BorderThickness="{TemplateBinding BorderThickness}" 
+                                    Padding="{TemplateBinding Padding}" 
+                                    SnapsToDevicePixels="True"
+                                    CornerRadius="8"
+                                    Margin="4,2">
+                                <Grid>
+                                    <ContentPresenter Content="{TemplateBinding Header}" 
+                                                      ContentSource="Header"
+                                                      HorizontalAlignment="Left"
+                                                      VerticalAlignment="Center"/>
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#3E3E42"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Opacity" Value="0.5"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ModernContextMenuStyle" TargetType="ContextMenu">
+                <Setter Property="Background" Value="#1E1E1E"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="HasDropShadow" Value="True"/>
+                <Setter Property="ItemContainerStyle" Value="{StaticResource ModernMenuItemStyle}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="{TemplateBinding Background}"
+                                    CornerRadius="15"
+                                    BorderThickness="1"
+                                    BorderBrush="#333333"
+                                    Padding="5">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="20" 
+                                                      Color="Black" 
+                                                      Opacity="0.5" 
+                                                      ShadowDepth="5"/>
+                                </Border.Effect>
+                                <ItemsPresenter/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="CubeMenuButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="#2D2D30"/>
+                <Setter Property="Foreground" Value="White"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Width" Value="40"/>
+                <Setter Property="Height" Value="40"/>
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="border" 
+                                    Background="{TemplateBinding Background}" 
+                                    CornerRadius="10"
+                                    BorderThickness="1"
+                                    BorderBrush="#3E3E42">
+                                <ContentPresenter HorizontalAlignment="Center" 
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#3E3E42"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="#505050"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="border" Property="Background" Value="#007ACC"/>
+                                    <Setter TargetName="border" Property="BorderBrush" Value="#007ACC"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
         </Border.Resources>
 
         <Grid x:Name="MainGrid">
@@ -120,7 +226,6 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <!-- HEADER -->
             <Border Grid.Row="0" Background="Transparent" Padding="20,10">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -129,35 +234,28 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Invisible drag zone -->
                     <Border Background="Transparent" 
-                         Panel.ZIndex="0"
-                         Grid.ColumnSpan="3"/>
+                            Panel.ZIndex="0"
+                            Grid.ColumnSpan="3"/>
 
-                    <!-- LOGO -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Nx" FontWeight="Bold" Foreground="#007ACC" FontSize="20"/>
                         <TextBlock Text="Desk" FontWeight="Light" Foreground="White" FontSize="20"/>
                     </StackPanel>
 
-                    <!-- Panel Pre-Sesión (MODIFICADO) -->
                     <StackPanel x:Name="PreSessionControls"
                                 Grid.Column="1" Orientation="Horizontal"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
 
                         <TextBlock Text="ID de Sala:" Foreground="#C0C0C0"
-                                VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                   VerticalAlignment="Center" Margin="0,0,10,0"/>
 
-                        <!-- Contenedor combinado Input + Botón -->
                         <Grid VerticalAlignment="Center">
                             <TextBox x:Name="RoomIdTextBox"
-                                  Width="280"
-                                  Style="{StaticResource ModernTextBox}"
-                                  VerticalContentAlignment="Center"
-                                  Padding="10,8,40,8"/>
-                            <!-- Padding derecho extra para dejar espacio al botón -->
-
-                            <!-- Botón Flecha "Dentro" del TextBox -->
+                                     Width="280"
+                                     Style="{StaticResource ModernTextBox}"
+                                     VerticalContentAlignment="Center"
+                                     Padding="10,8,40,8"/>
                             <Button x:Name="ConnectButton"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Center"
@@ -173,7 +271,6 @@
                         </Grid>
                     </StackPanel>
 
-                    <!-- Panel En-Sesión -->
                     <StackPanel x:Name="InSessionControls"
                                 Grid.Column="1"
                                 Orientation="Horizontal"
@@ -181,41 +278,35 @@
                                 VerticalAlignment="Center"
                                 Visibility="Collapsed">
 
-                        <!-- Botón de Desconectar -->
                         <Button x:Name="DisconnectButton"
                                 Content="Desconectar"
                                 Style="{StaticResource DisconnectButton}"
                                 Margin="20,0,0,0"/>
                     </StackPanel>
 
-                    <!-- Controles de Ventana y Menú -->
                     <StackPanel Grid.Column="2"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Right"
                                 VerticalAlignment="Center"
                                 Panel.ZIndex="1001">
 
-                        <!-- Menú de Opciones / Pantallas -->
                         <Button x:Name="MenuButton"
                                 Click="MenuButton_Click" 
-                                Style="{StaticResource ModernIconButton}"
-                                ToolTip="Cambiar Pantalla / Opciones"
-                                Margin="0,0,5,0">
-                            <!-- Definimos el Menú que se abrirá -->
+                                Style="{StaticResource CubeMenuButtonStyle}"
+                                ToolTip="Pantallas"
+                                Margin="0,0,10,0">
+
                             <Button.ContextMenu>
                                 <ContextMenu x:Name="ScreenContextMenu" 
-                                             Placement="Bottom" 
-                                             Background="#2D2D30" 
-                                             Foreground="White"
-                                             BorderBrush="#3E3E42">
-                                    <!-- Aquí se llenarán las pantallas dinámicamente -->
+                                             Style="{StaticResource ModernContextMenuStyle}">
                                     <MenuItem Header="Esperando pantallas..." IsEnabled="False"/>
                                 </ContextMenu>
                             </Button.ContextMenu>
 
-                            <Path Data="M0,0 L16,0 M0,6 L16,6 M0,12 L16,12"
-                                  Stroke="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"
-                                  StrokeThickness="2"
+                            <Path Data="M3,3H9V9H3V3M11,3H17V9H11V3M3,11H9V17H3V11M11,11H17V17H11V11"
+                                  Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"
+                                  Stretch="Uniform"
+                                  Width="18" Height="18"
                                   VerticalAlignment="Center"
                                   HorizontalAlignment="Center"/>
                         </Button>
@@ -227,14 +318,12 @@
                 </Grid>
             </Border>
 
-            <!-- VIDEO -->
             <Border Grid.Row="1" Background="#121212" ClipToBounds="True">
                 <ContentControl x:Name="ContentArea"
-                  Grid.Row="1"
-                  Background="#121212"/>
+                                Grid.Row="1"
+                                Background="#121212"/>
             </Border>
 
-            <!-- FOOTER -->
             <Border Grid.Row="2" Background="Transparent" Padding="12,6">
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="Estado:" Foreground="White" FontWeight="SemiBold" Margin="0,0,5,0"/>

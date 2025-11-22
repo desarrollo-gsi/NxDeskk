@@ -326,7 +326,6 @@ namespace NxDesk.Host
 
                 if (message == null) return;
 
-                // --- MODIFICADO: Permitir mensajes del sistema ---
                 if (message.Type == "system:get_screens")
                 {
                     _logger.LogInformation("Recibida solicitud de lista de pantallas.");
@@ -334,7 +333,6 @@ namespace NxDesk.Host
                     return;
                 }
 
-                // Si no es input ni system, ignorar
                 if (message.Type != "input") return;
 
                 var input = JsonConvert.DeserializeObject<InputEvent>(message.Payload);
