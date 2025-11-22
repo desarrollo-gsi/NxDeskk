@@ -131,33 +131,31 @@ namespace NxDesk.Client
 
         private void PopulateScreenButtons(List<string> screenNames)
         {
-            // Asegurarnos de estar en el hilo de la UI
             Dispatcher.Invoke(() =>
             {
-                ScreenButtonsItemsControl.Items.Clear();
+                // Limpiamos los items actuales del menú
+                ScreenContextMenu.Items.Clear();
 
-                // Si solo hay una pantalla, tal vez no quieras mostrar botones, o sí para confirmar.
-                // Aquí los mostramos siempre si llegan.
-                if (screenNames == null || screenNames.Count == 0) return;
+                if (screenNames == null || screenNames.Count == 0)
+                {
+                    var emptyItem = new MenuItem { Header = "No hay pantallas disponibles", IsEnabled = false };
+                    ScreenContextMenu.Items.Add(emptyItem);
+                    return;
+                }
 
                 for (int i = 0; i < screenNames.Count; i++)
                 {
-                    var screenName = screenNames[i]; // Ej: "Pantalla 1 (1920x1080)"
-                    var screenIndex = i;
+                    string name = screenNames[i];
+                    int index = i;
 
-                    Button btn = new Button
+                    var menuItem = new MenuItem
                     {
-                        Content = (i + 1).ToString(), // Mostramos solo el número para ahorrar espacio, o screenName
-                        ToolTip = screenName, // El nombre completo en el tooltip
-                        Style = (Style)FindResource("ModernTextButton"),
-                        Margin = new Thickness(5, 0, 5, 0),
-                        Width = 30, // Botones un poco más compactos
-                        Height = 30
+                        Header = name,
                     };
 
-                    btn.Click += (s, e) => SwitchScreen(screenIndex);
+                    menuItem.Click += (s, e) => SwitchScreen(index);
 
-                    ScreenButtonsItemsControl.Items.Add(btn);
+                    ScreenContextMenu.Items.Add(menuItem);
                 }
             });
         }
@@ -212,6 +210,15 @@ namespace NxDesk.Client
                 EventType = "keyup",
                 Key = e.Key.ToString()
             });
+        }
+
+        private void MenuButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (MenuButton.ContextMenu != null)
+            {
+                MenuButton.ContextMenu.PlacementTarget = MenuButton;
+                MenuButton.ContextMenu.IsOpen = true;
+            }
         }
     }
 }
