@@ -1,12 +1,11 @@
-﻿// Contenido completo de NxDesk.Client/Services/SignalingService.cs
-using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.Extensions.Configuration; // <-- Paquete NuGet requerido
+﻿using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration;
 using NxDesk.Core.DTOs;
-using System; // <-- AÑADIDO para AppDomain
+using System;
 using System.Diagnostics;
-using System.IO; // <-- AÑADIDO para SetBasePath
+using System.IO;
 using System.Net.Http;
-using System.Threading.Tasks; // <-- AÑADIDO
+using System.Threading.Tasks;
 
 namespace NxDesk.Client.Services
 {
@@ -15,28 +14,42 @@ namespace NxDesk.Client.Services
         private readonly string _serverUrl;
         private HubConnection _hubConnection;
         private string _roomId;
+
+        // Evento para recibir mensajes
         public event Func<SdpMessage, Task> OnMessageReceived;
 
         public SignalingService()
         {
-            // --- AÑADIDO: Leer config ---
+            // 1. Cargar la configuración desde appsettings.json
             var config = new ConfigurationBuilder()
-                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory) // Necesita 'using System;'
+                .SetBasePath(AppDomain.CurrentDomain.BaseDirectory)
                 .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
                 .Build();
 
-            // Esto funcionará después de instalar los NuGets
-            _serverUrl = config.GetConnectionString("SignalR:ServerUrl");
+            // --- CORRECCIÓN CRÍTICA ---
+            // Usamos el indexador directo ["Sección:Clave"] en lugar de GetConnectionString
+            // Esto asegura que lea la URL de ngrok correctamente.
+            _serverUrl = config["SignalR:ServerUrl"];
+
+            // Validación de seguridad: Si falla la lectura, avisamos en debug pero intentamos usar localhost
             if (string.IsNullOrEmpty(_serverUrl) || _serverUrl.Contains("[IP_DE_TU_SERVIDOR]"))
             {
-                Debug.WriteLine("[SignalR] SignalR:ServerUrl no válido en appsettings.json. Usando localhost.");
-                _serverUrl = "https://localhost:7099/signalinghub"; // Fallback
+                Debug.WriteLine("----------------------------------------------------------------");
+                Debug.WriteLine("[ERROR CRÍTICO] No se leyó la URL del servidor. Usando LOCALHOST.");
+                Debug.WriteLine("Verifica que appsettings.json tenga 'SignalR': { 'ServerUrl': '...' }");
+                Debug.WriteLine("----------------------------------------------------------------");
+                _serverUrl = "https://localhost:7099/signalinghub";
             }
-            // -----------------------------
+            else
+            {
+                Debug.WriteLine($"[SignalR] Conectando a: {_serverUrl}");
+            }
 
+            // 2. Configurar la conexión SignalR
             _hubConnection = new HubConnectionBuilder()
                 .WithUrl(_serverUrl, options =>
                 {
+                    // Ignorar errores de certificado SSL (útil para ngrok/dev)
                     options.HttpMessageHandlerFactory = (handler) =>
                     {
                         if (handler is HttpClientHandler clientHandler)
@@ -47,9 +60,10 @@ namespace NxDesk.Client.Services
                         return handler;
                     };
                 })
-                .WithAutomaticReconnect()
+                .WithAutomaticReconnect() // Reintentar si se cae la red
                 .Build();
 
+            // 3. Escuchar mensajes del Hub
             _hubConnection.On<SdpMessage>("ReceiveMessage", async (message) =>
             {
                 if (OnMessageReceived != null)
@@ -57,6 +71,12 @@ namespace NxDesk.Client.Services
                     await OnMessageReceived(message);
                 }
             });
+        }
+
+        // Método necesario para obtener el ID de conexión actual (útil para evitar rebote de mensajes)
+        public string? GetConnectionId()
+        {
+            return _hubConnection?.ConnectionId;
         }
 
         public async Task<bool> ConnectAsync(string roomId)
@@ -70,12 +90,15 @@ namespace NxDesk.Client.Services
             try
             {
                 await _hubConnection.StartAsync();
+                Debug.WriteLine($"[SignalR] Conectado. ID: {_hubConnection.ConnectionId}");
+
+                // Unirse a la sala (que es el ID del Host)
                 await _hubConnection.InvokeAsync("JoinRoom", _roomId);
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error de conexión de SignalR: {ex.Message}");
+                Debug.WriteLine($"[SignalR Error] No se pudo conectar: {ex.Message}");
                 return false;
             }
         }
@@ -84,8 +107,15 @@ namespace NxDesk.Client.Services
         {
             if (_hubConnection.State != HubConnectionState.Connected)
             {
-                throw new InvalidOperationException("No se puede enviar el mensaje, SignalR no está conectado.");
+                Debug.WriteLine("[SignalR] Intento de envío fallido: No conectado.");
+                return;
             }
+
+            if (string.IsNullOrEmpty(message.SenderId))
+            {
+                message.SenderId = _hubConnection.ConnectionId;
+            }
+
             await _hubConnection.InvokeAsync("RelayMessage", _roomId, message);
         }
 

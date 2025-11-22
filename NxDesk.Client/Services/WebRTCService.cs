@@ -172,7 +172,8 @@ namespace NxDesk.Client.Services
             var msg = new SdpMessage
             {
                 Type = "offer",
-                Payload = sdpString
+                Payload = sdpString,
+                SenderId = _signalingService.GetConnectionId()
             };
             await _signalingService.RelayMessageAsync(msg);
             OnConnectionStateChanged?.Invoke("Oferta enviada...");
