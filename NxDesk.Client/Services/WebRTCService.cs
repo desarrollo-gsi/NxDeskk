@@ -7,7 +7,7 @@ using System.Windows.Media.Imaging;
 using System.Windows;
 using SdpMessage = NxDesk.Core.DTOs.SdpMessage;
 using System.IO;
-using System.Text; // Necesario para Encoding
+using System.Text;
 
 namespace NxDesk.Client.Services
 {
@@ -16,14 +16,12 @@ namespace NxDesk.Client.Services
         private readonly SignalingService _signalingService;
         private RTCPeerConnection? _peerConnection;
         private RTCDataChannel? _dataChannel;
-        // private WriteableBitmap? _videoBitmap; // No se usa actualmente
+
         private static readonly ILogger _logger = new Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory()
             .CreateLogger<WebRTCService>();
 
         public event Action<string>? OnConnectionStateChanged;
         public event Action<System.Windows.Media.Imaging.BitmapSource>? OnVideoFrameReady;
-
-        // NUEVO EVENTO: Notificar cuando se reciben las pantallas del host
         public event Action<List<string>>? OnScreensInfoReceived;
 
         public WebRTCService(SignalingService signalingService)
@@ -69,7 +67,6 @@ namespace NxDesk.Client.Services
             _peerConnection.onconnectionstatechange += (state) =>
             {
                 OnConnectionStateChanged?.Invoke($"P2P: {state}");
-                _logger.LogInformation($"Connection state: {state}");
             };
 
             var videoFormats = new List<VideoFormat>
@@ -98,33 +95,29 @@ namespace NxDesk.Client.Services
                             }
                             OnVideoFrameReady?.Invoke(bitmapImage);
                         }
-                        catch (Exception ex)
-                        {
-                            _logger.LogWarning($"Error decodificando frame JPEG: {ex.Message}");
-                        }
+                        catch { }
                     });
                 }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Error general en frame: {ex.Message}");
-                }
+                catch { }
             };
 
             _dataChannel = await _peerConnection.createDataChannel("input-channel");
 
+            // --- MODIFICADO: Pedir pantallas al abrir el canal ---
             _dataChannel.onopen += () =>
             {
-                OnConnectionStateChanged?.Invoke("Canal de datos abierto");
+                OnConnectionStateChanged?.Invoke("Canal de datos abierto. Solicitando pantallas...");
                 _logger.LogInformation("Data channel abierto");
+
+                // Enviamos solicitud explícita
+                RequestScreenList();
             };
 
             _dataChannel.onclose += () =>
             {
                 OnConnectionStateChanged?.Invoke("Canal de datos cerrado");
-                _logger.LogInformation("Data channel cerrado");
             };
 
-            // MANEJO DE MENSAJES ENTRANTE (INFO DE PANTALLAS)
             _dataChannel.onmessage += (RTCDataChannel channel, DataChannelPayloadProtocols protocol, byte[] data) =>
             {
                 if (protocol == DataChannelPayloadProtocols.WebRTC_String)
@@ -139,7 +132,6 @@ namespace NxDesk.Client.Services
                             var screenInfo = JsonConvert.DeserializeObject<ScreenInfoPayload>(message.Payload);
                             if (screenInfo != null && screenInfo.ScreenNames != null)
                             {
-                                // Disparamos el evento en el hilo principal si es necesario, o dejamos que la UI haga el Dispatcher
                                 OnScreensInfoReceived?.Invoke(screenInfo.ScreenNames);
                             }
                         }
@@ -154,7 +146,20 @@ namespace NxDesk.Client.Services
             await CreateOfferAsync();
         }
 
-        // ... (El resto de los métodos privados: CreateOfferAsync, HandleSignalingMessageAsync permanecen igual) ...
+        // --- NUEVO MÉTODO: Enviar solicitud de pantallas ---
+        private void RequestScreenList()
+        {
+            if (_dataChannel != null && _dataChannel.readyState == RTCDataChannelState.open)
+            {
+                var msg = new DataChannelMessage
+                {
+                    Type = "system:get_screens",
+                    Payload = ""
+                };
+                string json = JsonConvert.SerializeObject(msg);
+                _dataChannel.send(json);
+            }
+        }
 
         private async Task CreateOfferAsync()
         {
@@ -163,14 +168,14 @@ namespace NxDesk.Client.Services
             var offer = _peerConnection.createOffer(null);
             await _peerConnection.setLocalDescription(offer);
             string sdpString = _peerConnection.localDescription?.sdp?.ToString() ?? string.Empty;
-            _logger.LogInformation($"SDP Offer:\n{sdpString}");
+
             var msg = new SdpMessage
             {
                 Type = "offer",
                 Payload = sdpString
             };
             await _signalingService.RelayMessageAsync(msg);
-            OnConnectionStateChanged?.Invoke("Oferta enviada. Esperando respuesta del host...");
+            OnConnectionStateChanged?.Invoke("Oferta enviada...");
         }
 
         private async Task HandleSignalingMessageAsync(SdpMessage message)
@@ -179,8 +184,7 @@ namespace NxDesk.Client.Services
             switch (message.Type)
             {
                 case "answer":
-                    OnConnectionStateChanged?.Invoke("Respuesta recibida. Procesando...");
-                    _logger.LogInformation($"SDP Answer:\n{message.Payload}");
+                    OnConnectionStateChanged?.Invoke("Respuesta recibida...");
                     var answerSdp = SDP.ParseSDPDescription(message.Payload);
                     var answerInit = new RTCSessionDescriptionInit
                     {
@@ -188,22 +192,14 @@ namespace NxDesk.Client.Services
                         sdp = answerSdp.ToString()
                     };
                     var setRemoteResult = _peerConnection.setRemoteDescription(answerInit);
-                    if (setRemoteResult != SetDescriptionResultEnum.OK)
+                    if (setRemoteResult == SetDescriptionResultEnum.OK)
                     {
-                        OnConnectionStateChanged?.Invoke($"Error remoto: {setRemoteResult}");
-                        _logger.LogError($"Error en setRemoteDescription: {setRemoteResult}");
-                    }
-                    else
-                    {
-                        OnConnectionStateChanged?.Invoke("Descripción remota (answer) aceptada.");
-                        _logger.LogInformation("Answer aceptado correctamente");
+                        OnConnectionStateChanged?.Invoke("Conexión establecida.");
                     }
                     break;
                 case "ice-candidate":
-                    OnConnectionStateChanged?.Invoke("Candidato ICE recibido.");
                     var candidateInit = JsonConvert.DeserializeObject<RTCIceCandidateInit>(message.Payload);
                     _peerConnection.addIceCandidate(candidateInit);
-                    _logger.LogInformation($"ICE Candidate agregado: {message.Payload}");
                     break;
             }
         }
@@ -213,19 +209,13 @@ namespace NxDesk.Client.Services
             if (_dataChannel?.readyState == RTCDataChannelState.open)
             {
                 var payloadJson = JsonConvert.SerializeObject(inputEvent);
-
                 var messageWrapper = new DataChannelMessage
                 {
                     Type = "input",
                     Payload = payloadJson
                 };
-
                 var finalJson = JsonConvert.SerializeObject(messageWrapper);
                 _dataChannel.send(finalJson);
-            }
-            else
-            {
-                _logger.LogWarning($"Data channel no está abierto. Estado: {_dataChannel?.readyState}");
             }
         }
 

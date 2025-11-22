@@ -28,10 +28,9 @@ namespace NxDesk.Host
         private bool _isCapturing = false;
         private const int FRAME_RATE = 20;
 
-        // Variables para manejo de múltiples pantallas
         private int _currentScreenIndex = 0;
         private Screen[] _allScreens;
-        private readonly object _captureLock = new object(); // Lock para seguridad en hilos
+        private readonly object _captureLock = new object();
 
         public WebRTCHostService(ILogger<WebRTCHostService> logger, IConfiguration configuration)
         {
@@ -62,14 +61,9 @@ namespace NxDesk.Host
         public async Task StartAsync()
         {
             _logger.LogInformation("Iniciando servicio de Host NxDesk.");
-
             _discoveryService.Start();
-            _logger.LogInformation("Servicio de descubrimiento de Host iniciado.");
-
             await InitializeSignalR();
         }
-
-        // ... (InitializeSignalR y HandleSignalingMessageAsync permanecen igual) ...
 
         private async Task InitializeSignalR()
         {
@@ -97,7 +91,6 @@ namespace NxDesk.Host
             try
             {
                 await _hubConnection.StartAsync();
-
                 _logger.LogInformation("Conectado a SignalR. Uniéndose a la sala: {RoomId}", _roomId);
                 await _hubConnection.InvokeAsync("JoinRoom", _roomId);
             }
@@ -110,8 +103,6 @@ namespace NxDesk.Host
         private async Task HandleSignalingMessageAsync(SdpMessage message)
         {
             if (message.SenderId == _hubConnection.ConnectionId) return;
-
-            _logger.LogInformation("Mensaje recibido: {Type}", message.Type);
 
             try
             {
@@ -169,28 +160,9 @@ namespace NxDesk.Host
 
                 _dataChannel.onopen += () =>
                 {
-                    _logger.LogInformation("DataChannel abierto. Enviando información de pantallas...");
-                    try
-                    {
-                        // Refrescar lista de pantallas al conectar
-                        _allScreens = Screen.AllScreens;
-                        var screenNames = _allScreens.Select((s, i) => $"Pantalla {i + 1} ({s.Bounds.Width}x{s.Bounds.Height})").ToList();
-
-                        var screenInfo = new ScreenInfoPayload { ScreenNames = screenNames };
-
-                        var message = new DataChannelMessage
-                        {
-                            Type = "system:screen_info",
-                            Payload = JsonConvert.SerializeObject(screenInfo)
-                        };
-
-                        _dataChannel.send(JsonConvert.SerializeObject(message));
-                        _logger.LogInformation("Información de {Count} pantallas enviada.", screenNames.Count);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error al enviar información de pantallas.");
-                    }
+                    _logger.LogInformation("DataChannel abierto.");
+                    // Enviamos la lista al abrir, por si acaso
+                    SendScreenList();
                 };
 
                 dc.onmessage += (RTCDataChannel channel, DataChannelPayloadProtocols protocol, byte[] data) =>
@@ -218,6 +190,33 @@ namespace NxDesk.Host
             await Task.CompletedTask;
         }
 
+        // --- NUEVO MÉTODO: Centraliza el envío de la lista de pantallas ---
+        private void SendScreenList()
+        {
+            if (_dataChannel == null || _dataChannel.readyState != RTCDataChannelState.open) return;
+
+            try
+            {
+                _allScreens = Screen.AllScreens;
+                var screenNames = _allScreens.Select((s, i) => $"Pantalla {i + 1} ({s.Bounds.Width}x{s.Bounds.Height})").ToList();
+
+                var screenInfo = new ScreenInfoPayload { ScreenNames = screenNames };
+
+                var message = new DataChannelMessage
+                {
+                    Type = "system:screen_info",
+                    Payload = JsonConvert.SerializeObject(screenInfo)
+                };
+
+                _dataChannel.send(JsonConvert.SerializeObject(message));
+                _logger.LogInformation("Lista de pantallas enviada al cliente ({Count} pantallas).", screenNames.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error enviando lista de pantallas.");
+            }
+        }
+
         private void StartScreenCapture()
         {
             _isCapturing = true;
@@ -230,8 +229,6 @@ namespace NxDesk.Host
                 try
                 {
                     byte[] frame = null;
-
-                    // Usar lock para evitar conflictos si se cambia de pantalla mientras se captura
                     lock (_captureLock)
                     {
                         frame = CaptureScreen();
@@ -245,7 +242,7 @@ namespace NxDesk.Host
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Error capturando pantalla.");
+                    // Log only occasionally to avoid spamming
                 }
 
             }, null, 0, intervalMs);
@@ -255,7 +252,6 @@ namespace NxDesk.Host
         {
             try
             {
-                // Asegurar índice válido
                 if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0)
                 {
                     _currentScreenIndex = 0;
@@ -270,42 +266,35 @@ namespace NxDesk.Host
                     using (var ms = new MemoryStream())
                     {
                         var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.MimeType == "image/jpeg");
-
                         if (encoder != null)
                         {
                             var encoderParams = new EncoderParameters(1);
-                            encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 65L); // Calidad media para rendimiento
+                            encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 65L);
                             bitmap.Save(ms, encoder, encoderParams);
                         }
                         else
                         {
                             bitmap.Save(ms, ImageFormat.Jpeg);
                         }
-
                         return ms.ToArray();
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error en captura de pantalla");
+                _logger.LogError(ex, "Error en captura.");
                 return Array.Empty<byte>();
             }
         }
 
-        // Método para cambiar la pantalla activa de captura
         private void SwitchCaptureScreen(int screenIndex)
         {
             lock (_captureLock)
             {
                 if (screenIndex >= 0 && screenIndex < _allScreens.Length)
                 {
-                    _logger.LogInformation("Solicitud de cambio a pantalla {Index} recibida.", screenIndex);
+                    _logger.LogInformation("Cambiando a Pantalla {Index}", screenIndex);
                     _currentScreenIndex = screenIndex;
-                }
-                else
-                {
-                    _logger.LogWarning("Índice de pantalla inválido recibido: {Index}", screenIndex);
                 }
             }
         }
@@ -334,11 +323,19 @@ namespace NxDesk.Host
 
                 var json = Encoding.UTF8.GetString(data);
                 var message = JsonConvert.DeserializeObject<DataChannelMessage>(json);
-                if (message == null || message.Type != "input")
+
+                if (message == null) return;
+
+                // --- MODIFICADO: Permitir mensajes del sistema ---
+                if (message.Type == "system:get_screens")
                 {
-                    _logger.LogWarning("Mensaje desconocido o formato incorrecto: {Json}", json);
+                    _logger.LogInformation("Recibida solicitud de lista de pantallas.");
+                    SendScreenList();
                     return;
                 }
+
+                // Si no es input ni system, ignorar
+                if (message.Type != "input") return;
 
                 var input = JsonConvert.DeserializeObject<InputEvent>(message.Payload);
                 if (input == null) return;
@@ -351,7 +348,6 @@ namespace NxDesk.Host
                             var screenBounds = _allScreens[_currentScreenIndex].Bounds;
                             double absX = screenBounds.X + (input.X.Value * screenBounds.Width);
                             double absY = screenBounds.Y + (input.Y.Value * screenBounds.Height);
-
                             InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
                         }
                         break;
@@ -375,8 +371,7 @@ namespace NxDesk.Host
                         {
                             if (Enum.TryParse<Keys>(input.Key, true, out Keys winKey))
                             {
-                                byte keyCode = (byte)winKey;
-                                InputSimulator.SimulateKeyEvent(keyCode, input.EventType == "keydown");
+                                InputSimulator.SimulateKeyEvent((byte)winKey, input.EventType == "keydown");
                             }
                         }
                         break;
@@ -391,21 +386,17 @@ namespace NxDesk.Host
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error procesando input.");
+                _logger.LogWarning(ex, "Error procesando mensaje DataChannel.");
             }
         }
 
         public void Dispose()
         {
-            _logger.LogInformation("Deteniendo servicio NxDesk Host.");
-
             _isCapturing = false;
             _screenCaptureTimer?.Dispose();
             _dataChannel?.close();
             _peerConnection?.close();
-
             _discoveryService?.Stop();
-
             _hubConnection?.DisposeAsync().AsTask().Wait();
         }
     }

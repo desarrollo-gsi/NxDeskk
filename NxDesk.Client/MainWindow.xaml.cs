@@ -8,7 +8,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
-using System.Collections.Generic; // Necesario para List<>
+using System.Collections.Generic;
 
 namespace NxDesk.Client
 {
@@ -51,8 +51,8 @@ namespace NxDesk.Client
 
             Dispatcher.Invoke(async () =>
             {
-                // Limpiar botones anteriores por si acaso
-                ScreenButtonsItemsControl.Items.Clear();
+                // CORRECCIÓN: Eliminada la línea que referenciaba a ScreenButtonsItemsControl
+                // ScreenContextMenu se limpiará automáticamente cuando lleguen nuevas pantallas.
 
                 _signalingService = new SignalingService();
                 _webRTCService = new WebRTCService(_signalingService);
@@ -71,10 +71,6 @@ namespace NxDesk.Client
                 InSessionControls.Visibility = Visibility.Visible;
 
                 await _webRTCService.StartConnectionAsync(connectionId);
-
-                // YA NO USAMOS DATOS DUMMY
-                // var dummyScreenNames = new List<string> { "Pantalla 1", "Pantalla 2" };
-                // PopulateScreenButtons(dummyScreenNames);
             });
         }
 
@@ -96,7 +92,7 @@ namespace NxDesk.Client
                 {
                     _webRTCService.OnVideoFrameReady -= UpdateVideoFrame;
                     _webRTCService.OnConnectionStateChanged -= UpdateStatus;
-                    _webRTCService.OnScreensInfoReceived -= PopulateScreenButtons; // Desuscribir
+                    _webRTCService.OnScreensInfoReceived -= PopulateScreenButtons;
 
                     await _webRTCService.DisposeAsync();
                     _webRTCService = null;
@@ -106,7 +102,11 @@ namespace NxDesk.Client
                 ContentArea.Content = _welcomeView;
                 InSessionControls.Visibility = Visibility.Collapsed;
                 PreSessionControls.Visibility = Visibility.Visible;
-                ScreenButtonsItemsControl.Items.Clear();
+
+                // CORRECCIÓN: En lugar de limpiar el ItemsControl viejo, reiniciamos el Menú
+                ScreenContextMenu.Items.Clear();
+                ScreenContextMenu.Items.Add(new MenuItem { Header = "Esperando pantallas...", IsEnabled = false });
+
                 StatusTextBlock.Text = "Desconectado. Esperando conexión...";
             });
         }
@@ -133,7 +133,7 @@ namespace NxDesk.Client
         {
             Dispatcher.Invoke(() =>
             {
-                // Limpiamos los items actuales del menú
+                // Limpiamos los items actuales del menú context
                 ScreenContextMenu.Items.Clear();
 
                 if (screenNames == null || screenNames.Count == 0)
@@ -151,6 +151,7 @@ namespace NxDesk.Client
                     var menuItem = new MenuItem
                     {
                         Header = name,
+                        // Puedes agregar un icono aquí si deseas
                     };
 
                     menuItem.Click += (s, e) => SwitchScreen(index);
