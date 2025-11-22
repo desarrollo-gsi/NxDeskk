@@ -28,14 +28,26 @@ namespace NxDesk.Host
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetCursorPos(int X, int Y);
 
-        public static void SimulateMouseMove(double normalizedX, double normalizedY)
+        // --- CORRECCIÓN AQUÍ: Agregar el parámetro opcional screenIndex ---
+        public static void SimulateMouseMove(double normalizedX, double normalizedY, int screenIndex = 0)
         {
-            var bounds = Screen.PrimaryScreen.Bounds;
-            int absoluteX = (int)(normalizedX * bounds.Width);
-            int absoluteY = (int)(normalizedY * bounds.Height);
+            var screens = Screen.AllScreens;
+
+            // Validación simple para evitar índices fuera de rango
+            if (screenIndex < 0 || screenIndex >= screens.Length)
+            {
+                screenIndex = 0;
+            }
+
+            var bounds = screens[screenIndex].Bounds;
+
+            // Calcular la posición absoluta sumando el offset de la pantalla (bounds.X, bounds.Y)
+            int absoluteX = bounds.X + (int)(normalizedX * bounds.Width);
+            int absoluteY = bounds.Y + (int)(normalizedY * bounds.Height);
 
             SetCursorPos(absoluteX, absoluteY);
         }
+        // ------------------------------------------------------------------
 
         public static void SimulateMouseDown(string button)
         {

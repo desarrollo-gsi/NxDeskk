@@ -8,9 +8,7 @@ using SIPSorceryMedia.Abstractions;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Text;
-
-using System.Windows.Forms; 
-
+using System.Windows.Forms;
 using SdpMessage = NxDesk.Core.DTOs.SdpMessage;
 
 namespace NxDesk.Host
@@ -19,8 +17,8 @@ namespace NxDesk.Host
     {
         private readonly string _roomId;
         private readonly string _serverUrl;
-        private readonly IdentityService _identityService; 
-        private NetworkDiscoveryService _discoveryService; 
+        private readonly IdentityService _identityService;
+        private NetworkDiscoveryService _discoveryService;
 
         private readonly ILogger<WebRTCHostService> _logger;
         private HubConnection _hubConnection;
@@ -29,8 +27,11 @@ namespace NxDesk.Host
         private System.Threading.Timer _screenCaptureTimer;
         private bool _isCapturing = false;
         private const int FRAME_RATE = 20;
+
+        // Variables para manejo de múltiples pantallas
         private int _currentScreenIndex = 0;
         private Screen[] _allScreens;
+        private readonly object _captureLock = new object(); // Lock para seguridad en hilos
 
         public WebRTCHostService(ILogger<WebRTCHostService> logger, IConfiguration configuration)
         {
@@ -40,7 +41,7 @@ namespace NxDesk.Host
             if (string.IsNullOrEmpty(_serverUrl) || _serverUrl.Contains("[IP_DE_TU_SERVIDOR]"))
             {
                 _logger.LogError("SignalR:ServerUrl no válido en appsettings.json. Usando localhost por defecto.");
-                _serverUrl = "https://localhost:7099/signalinghub"; 
+                _serverUrl = "https://localhost:7099/signalinghub";
             }
 
             _identityService = new IdentityService();
@@ -62,16 +63,18 @@ namespace NxDesk.Host
         {
             _logger.LogInformation("Iniciando servicio de Host NxDesk.");
 
-            _discoveryService.Start(); 
+            _discoveryService.Start();
             _logger.LogInformation("Servicio de descubrimiento de Host iniciado.");
 
             await InitializeSignalR();
         }
 
+        // ... (InitializeSignalR y HandleSignalingMessageAsync permanecen igual) ...
+
         private async Task InitializeSignalR()
         {
             _hubConnection = new HubConnectionBuilder()
-                .WithUrl(_serverUrl, options => 
+                .WithUrl(_serverUrl, options =>
                 {
                     options.HttpMessageHandlerFactory = (handler) =>
                     {
@@ -106,11 +109,7 @@ namespace NxDesk.Host
 
         private async Task HandleSignalingMessageAsync(SdpMessage message)
         {
-            if (message.SenderId == _hubConnection.ConnectionId)
-            {
-                _logger.LogInformation("Ignorando eco de mensaje propio (Tipo: {Type})", message.Type);
-                return;
-            }
+            if (message.SenderId == _hubConnection.ConnectionId) return;
 
             _logger.LogInformation("Mensaje recibido: {Type}", message.Type);
 
@@ -173,11 +172,12 @@ namespace NxDesk.Host
                     _logger.LogInformation("DataChannel abierto. Enviando información de pantallas...");
                     try
                     {
+                        // Refrescar lista de pantallas al conectar
+                        _allScreens = Screen.AllScreens;
                         var screenNames = _allScreens.Select((s, i) => $"Pantalla {i + 1} ({s.Bounds.Width}x{s.Bounds.Height})").ToList();
 
                         var screenInfo = new ScreenInfoPayload { ScreenNames = screenNames };
 
-                        // 3. Enviar el mensaje envuelto
                         var message = new DataChannelMessage
                         {
                             Type = "system:screen_info",
@@ -209,7 +209,7 @@ namespace NxDesk.Host
                     {
                         Type = "ice-candidate",
                         Payload = candidate.toJSON(),
-                        SenderId = _hubConnection.ConnectionId // ¡IMPORTANTE!
+                        SenderId = _hubConnection.ConnectionId
                     };
                     await _hubConnection.InvokeAsync("RelayMessage", _roomId, iceMsg);
                 }
@@ -229,7 +229,14 @@ namespace NxDesk.Host
 
                 try
                 {
-                    var frame = CaptureScreen();
+                    byte[] frame = null;
+
+                    // Usar lock para evitar conflictos si se cambia de pantalla mientras se captura
+                    lock (_captureLock)
+                    {
+                        frame = CaptureScreen();
+                    }
+
                     if (frame != null && frame.Length > 0)
                     {
                         uint timestamp = (uint)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
@@ -248,10 +255,12 @@ namespace NxDesk.Host
         {
             try
             {
-                if (_currentScreenIndex >= _allScreens.Length)
+                // Asegurar índice válido
+                if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0)
                 {
                     _currentScreenIndex = 0;
                 }
+
                 var bounds = _allScreens[_currentScreenIndex].Bounds;
 
                 using (var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb))
@@ -265,7 +274,7 @@ namespace NxDesk.Host
                         if (encoder != null)
                         {
                             var encoderParams = new EncoderParameters(1);
-                            encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
+                            encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 65L); // Calidad media para rendimiento
                             bitmap.Save(ms, encoder, encoderParams);
                         }
                         else
@@ -284,16 +293,20 @@ namespace NxDesk.Host
             }
         }
 
+        // Método para cambiar la pantalla activa de captura
         private void SwitchCaptureScreen(int screenIndex)
         {
-            if (screenIndex >= 0 && screenIndex < _allScreens.Length)
+            lock (_captureLock)
             {
-                _logger.LogInformation("Solicitud de cambio a pantalla {Index} recibida.", screenIndex);
-                _currentScreenIndex = screenIndex;
-            }
-            else
-            {
-                _logger.LogWarning("Índice de pantalla inválido recibido: {Index}", screenIndex);
+                if (screenIndex >= 0 && screenIndex < _allScreens.Length)
+                {
+                    _logger.LogInformation("Solicitud de cambio a pantalla {Index} recibida.", screenIndex);
+                    _currentScreenIndex = screenIndex;
+                }
+                else
+                {
+                    _logger.LogWarning("Índice de pantalla inválido recibido: {Index}", screenIndex);
+                }
             }
         }
 
@@ -323,7 +336,7 @@ namespace NxDesk.Host
                 var message = JsonConvert.DeserializeObject<DataChannelMessage>(json);
                 if (message == null || message.Type != "input")
                 {
-                    _logger.LogWarning("Mensaje de DataChannel desconocido recibido: {Type}", message?.Type);
+                    _logger.LogWarning("Mensaje desconocido o formato incorrecto: {Json}", json);
                     return;
                 }
 
@@ -334,7 +347,14 @@ namespace NxDesk.Host
                 {
                     case "mousemove":
                         if (input.X.HasValue && input.Y.HasValue)
-                            InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value);
+                        {
+                            // Ajustar coordenadas relativas a la pantalla actual
+                            var screenBounds = _allScreens[_currentScreenIndex].Bounds;
+                            double absX = screenBounds.X + (input.X.Value * screenBounds.Width);
+                            double absY = screenBounds.Y + (input.Y.Value * screenBounds.Height);
+
+                            InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
+                        }
                         break;
 
                     case "mousedown":
@@ -361,6 +381,8 @@ namespace NxDesk.Host
                             }
                         }
                         break;
+
+                    // AQUÍ ESTÁ LA CLAVE: MANEJAR EL CAMBIO DE PANTALLA
                     case "control":
                         if (input.Command == "switch_screen" && input.Value.HasValue)
                         {
@@ -384,7 +406,7 @@ namespace NxDesk.Host
             _dataChannel?.close();
             _peerConnection?.close();
 
-            _discoveryService?.Stop(); 
+            _discoveryService?.Stop();
 
             _hubConnection?.DisposeAsync().AsTask().Wait();
         }
