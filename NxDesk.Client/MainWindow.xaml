@@ -12,19 +12,15 @@
         AllowsTransparency="True"
         Background="Transparent"
         ResizeMode="CanResize"
-        WindowStartupLocation="CenterScreen"
-        >
+        WindowStartupLocation="CenterScreen">
 
     <Border x:Name="MainBorder"
          CornerRadius="30"
          Background="#252526"
          SnapsToDevicePixels="True"
-         Padding="0"
-       >
+         Padding="0">
 
-        <!-- AÑADIMOS RECURSOS PARA LOS NUEVOS BOTONES -->
         <Border.Resources>
-            <!-- Estilo para el botón de Menú (icono) -->
             <Style x:Key="ModernIconButton" TargetType="Button">
                 <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="Foreground" Value="White"/>
@@ -57,7 +53,6 @@
                 </Setter>
             </Style>
 
-            <!-- Estilo para los botones de Sesión (texto) -->
             <Style x:Key="ModernTextButton" TargetType="Button">
                 <Setter Property="Background" Value="#3E3E42"/>
                 <Setter Property="Foreground" Value="White"/>
@@ -92,7 +87,6 @@
                 </Setter>
             </Style>
 
-            <!-- Estilo para el botón de Desconectar (rojo) -->
             <Style x:Key="DisconnectButton" TargetType="Button" BasedOn="{StaticResource ModernTextButton}">
                 <Setter Property="Background" Value="#D13438"/>
                 <Setter Property="Template">
@@ -117,7 +111,6 @@
                     </Setter.Value>
                 </Setter>
             </Style>
-
         </Border.Resources>
 
         <Grid x:Name="MainGrid">
@@ -130,7 +123,6 @@
             <!-- HEADER -->
             <Border Grid.Row="0" Background="Transparent" Padding="20,10">
                 <Grid>
-
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
@@ -148,26 +140,23 @@
                         <TextBlock Text="Desk" FontWeight="Light" Foreground="White" FontSize="20"/>
                     </StackPanel>
 
-                    <!-- Panel Pre-Sesión (Visible al inicio) -->
+                    <!-- Panel Pre-Sesión -->
                     <StackPanel x:Name="PreSessionControls"
                                 Grid.Column="1" Orientation="Horizontal"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
-
                         <TextBlock Text="ID de Sala:" Foreground="#C0C0C0"
                                 VerticalAlignment="Center" Margin="0,0,10,0"/>
-
                         <TextBox x:Name="RoomIdTextBox"
                               Width="250"
                               Text="test-room"
                               Style="{StaticResource ModernTextBox}"/>
-
                         <Button x:Name="ConnectButton"
                              Content="Conectar"
                              Margin="15,0,0,0"
                              Style="{StaticResource ModernButton}"/>
                     </StackPanel>
 
-                    <!-- Panel En-Sesión (Oculto al inicio) -->
+                    <!-- Panel En-Sesión -->
                     <StackPanel x:Name="InSessionControls"
                                 Grid.Column="1"
                                 Orientation="Horizontal"
@@ -175,23 +164,12 @@
                                 VerticalAlignment="Center"
                                 Visibility="Collapsed">
 
-                        <!-- Contenedor para botones de pantalla dinámicos -->
-                        <ItemsControl x:Name="ScreenButtonsItemsControl">
-                            <ItemsControl.ItemsPanel>
-                                <ItemsPanelTemplate>
-                                    <StackPanel Orientation="Horizontal"/>
-                                </ItemsPanelTemplate>
-                            </ItemsControl.ItemsPanel>
-                        </ItemsControl>
-
                         <!-- Botón de Desconectar -->
                         <Button x:Name="DisconnectButton"
                                 Content="Desconectar"
                                 Style="{StaticResource DisconnectButton}"
                                 Margin="20,0,0,0"/>
-
                     </StackPanel>
-
 
                     <!-- Controles de Ventana y Menú -->
                     <StackPanel Grid.Column="2"
@@ -200,11 +178,24 @@
                                 VerticalAlignment="Center"
                                 Panel.ZIndex="1001">
 
-                        <!-- Botón de Menú (Sándwich) -->
+                        <!-- MODIFICACIÓN: Agregado Evento Click y ContextMenu -->
                         <Button x:Name="MenuButton"
+                                Click="MenuButton_Click" 
                                 Style="{StaticResource ModernIconButton}"
-                                ToolTip="Opciones"
+                                ToolTip="Cambiar Pantalla / Opciones"
                                 Margin="0,0,5,0">
+                            <!-- Definimos el Menú que se abrirá -->
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="ScreenContextMenu" 
+                                             Placement="Bottom" 
+                                             Background="#2D2D30" 
+                                             Foreground="White"
+                                             BorderBrush="#3E3E42">
+                                    <!-- Aquí se llenarán las pantallas dinámicamente -->
+                                    <MenuItem Header="Esperando pantallas..." IsEnabled="False"/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+
                             <Path Data="M0,0 L16,0 M0,6 L16,6 M0,12 L16,12"
                                   Stroke="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"
                                   StrokeThickness="2"
@@ -212,12 +203,10 @@
                                   HorizontalAlignment="Center"/>
                         </Button>
 
-                        <!-- Controles de Ventana (Min/Max/Cerrar) -->
                         <actions:WindowActionsControl 
                           VerticalAlignment="Center"
                           Margin="0,0,5,0"/>
                     </StackPanel>
-
                 </Grid>
             </Border>
 
@@ -236,7 +225,6 @@
                              Text="Esperando conexión..." Foreground="White" Opacity="0.9"/>
                 </StackPanel>
             </Border>
-
         </Grid>
     </Border>
 </Window>

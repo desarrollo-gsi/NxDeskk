@@ -212,7 +212,6 @@ namespace NxDesk.Client.Services
         {
             if (_dataChannel?.readyState == RTCDataChannelState.open)
             {
-                // Empaquetamos el InputEvent dentro de un DataChannelMessage para ser consistentes
                 var payloadJson = JsonConvert.SerializeObject(inputEvent);
 
                 var messageWrapper = new DataChannelMessage

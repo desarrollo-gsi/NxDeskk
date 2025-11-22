@@ -348,7 +348,6 @@ namespace NxDesk.Host
                     case "mousemove":
                         if (input.X.HasValue && input.Y.HasValue)
                         {
-                            // Ajustar coordenadas relativas a la pantalla actual
                             var screenBounds = _allScreens[_currentScreenIndex].Bounds;
                             double absX = screenBounds.X + (input.X.Value * screenBounds.Width);
                             double absY = screenBounds.Y + (input.Y.Value * screenBounds.Height);
@@ -382,7 +381,6 @@ namespace NxDesk.Host
                         }
                         break;
 
-                    // AQUÍ ESTÁ LA CLAVE: MANEJAR EL CAMBIO DE PANTALLA
                     case "control":
                         if (input.Command == "switch_screen" && input.Value.HasValue)
                         {
