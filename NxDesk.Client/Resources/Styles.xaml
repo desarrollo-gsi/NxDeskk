@@ -58,7 +58,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Border Background="{TemplateBinding Background}" 
-                            CornerRadius="5" 
+                            CornerRadius="15" 
                             BorderThickness="1" 
                             BorderBrush="#3E3E42">
                         <ScrollViewer x:Name="PART_ContentHost"/>

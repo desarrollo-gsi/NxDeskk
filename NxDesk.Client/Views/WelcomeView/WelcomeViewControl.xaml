@@ -21,11 +21,26 @@
                            FontSize="18"
                            HorizontalAlignment="Center"/>
 
-                <TextBlock Text="{Binding MyId}"
-                           Foreground="#007ACC" FontSize="40"
-                           FontWeight="Bold"
-                           HorizontalAlignment="Center"
-                           Margin="0,5,0,0"/>
+                <StackPanel Orientation="Horizontal" 
+                            HorizontalAlignment="Center" 
+                            Margin="0,5,0,0">
+
+                    <TextBlock Text="{Binding MyId}"
+                               Foreground="#007ACC" FontSize="40"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"/>
+
+                    <Button Margin="15,5,0,0"
+                            Click="CopyId_Click"
+                            ToolTip="Copiar ID"
+                            Style="{StaticResource ModernIconButton}"
+                            VerticalAlignment="Center">
+                        <Path Data="M16,1H4C2.9,1,2,1.9,2,3v14h2V3h12V1zm3,4H8C6.9,5,6,5.9,6,7v14c0,1.1,0.9,2,2,2h11c1.1,0,2-0.9,2-2V7c0-1.1-0.9-2-2-2zm0,16H8V7h11v14z"
+                              Fill="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}"
+                              Stretch="Uniform"
+                              Width="20" Height="20"/>
+                    </Button>
+                </StackPanel>
 
             </StackPanel>
         </Border>
@@ -36,7 +51,7 @@
                    FontWeight="SemiBold"
                    Margin="30,20,0,0"/>
 
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer VerticalScrollBarVisibility="Hidden" HorizontalScrollBarVisibility="Disabled">
 
             <ItemsControl ItemsSource="{Binding DiscoveredDevices}">
 
@@ -49,14 +64,9 @@
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border Width="220" Height="140" Margin="10" 
-                                CornerRadius="4" Background="#2A2A2A"
-                                Cursor="Hand">
-
-                            <Border.InputBindings>
-                                <MouseBinding MouseAction="LeftClick"
-                                              Command="{Binding DataContext.SelectDeviceCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                              CommandParameter="{Binding}"/>
-                            </Border.InputBindings>
+                                CornerRadius="15" Background="#2A2A2A"
+                                Cursor="Hand"
+                                MouseLeftButtonDown="DeviceCard_MouseLeftButtonDown">
 
                             <StackPanel VerticalAlignment="Bottom" Margin="12">
                                 <TextBlock Text="{Binding Alias}" 

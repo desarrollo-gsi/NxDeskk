@@ -140,20 +140,37 @@
                         <TextBlock Text="Desk" FontWeight="Light" Foreground="White" FontSize="20"/>
                     </StackPanel>
 
-                    <!-- Panel Pre-Sesión -->
+                    <!-- Panel Pre-Sesión (MODIFICADO) -->
                     <StackPanel x:Name="PreSessionControls"
                                 Grid.Column="1" Orientation="Horizontal"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
+
                         <TextBlock Text="ID de Sala:" Foreground="#C0C0C0"
                                 VerticalAlignment="Center" Margin="0,0,10,0"/>
-                        <TextBox x:Name="RoomIdTextBox"
-                              Width="250"
-                              Text="test-room"
-                              Style="{StaticResource ModernTextBox}"/>
-                        <Button x:Name="ConnectButton"
-                             Content="Conectar"
-                             Margin="15,0,0,0"
-                             Style="{StaticResource ModernButton}"/>
+
+                        <!-- Contenedor combinado Input + Botón -->
+                        <Grid VerticalAlignment="Center">
+                            <TextBox x:Name="RoomIdTextBox"
+                                  Width="280"
+                                  Style="{StaticResource ModernTextBox}"
+                                  VerticalContentAlignment="Center"
+                                  Padding="10,8,40,8"/>
+                            <!-- Padding derecho extra para dejar espacio al botón -->
+
+                            <!-- Botón Flecha "Dentro" del TextBox -->
+                            <Button x:Name="ConnectButton"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Width="32" Height="32"
+                                    Margin="0,0,3,0"
+                                    ToolTip="Conectar"
+                                    Style="{StaticResource ModernIconButton}">
+                                <Path Data="M12,4l-1.41,1.41L16.17,11H4v2h12.17l-5.58,5.59L12,20l8-8L12,4z"
+                                      Fill="#007ACC"
+                                      Stretch="Uniform"
+                                      Width="16" Height="16"/>
+                            </Button>
+                        </Grid>
                     </StackPanel>
 
                     <!-- Panel En-Sesión -->
@@ -178,7 +195,7 @@
                                 VerticalAlignment="Center"
                                 Panel.ZIndex="1001">
 
-                        <!-- MODIFICACIÓN: Agregado Evento Click y ContextMenu -->
+                        <!-- Menú de Opciones / Pantallas -->
                         <Button x:Name="MenuButton"
                                 Click="MenuButton_Click" 
                                 Style="{StaticResource ModernIconButton}"
