@@ -10,11 +10,13 @@ using System.Drawing.Imaging;
 using System.Text;
 using System.Windows.Forms;
 using SdpMessage = NxDesk.Core.DTOs.SdpMessage;
-
+using SIPSorceryMedia.Encoders;
+using System.Runtime.InteropServices;
 namespace NxDesk.Host
 {
     public class WebRTCHostService : IDisposable
     {
+        private readonly VpxVideoEncoder _vpxEncoder;
         private readonly string _roomId;
         private readonly string _serverUrl;
         private readonly IdentityService _identityService;
@@ -56,6 +58,9 @@ namespace NxDesk.Host
             _logger.LogInformation("IdentityService cargado. Este Host ID es: {HostID}", _roomId);
 
             _discoveryService = new NetworkDiscoveryService(_identityService.MyID, _identityService.MyAlias);
+            _vpxEncoder = new VpxVideoEncoder();
+
+            _logger.LogInformation("Encoder VP8 inicializado.");
         }
 
         public async Task StartAsync()
@@ -187,6 +192,7 @@ namespace NxDesk.Host
             };
 
             await Task.CompletedTask;
+            StartScreenCapture();
         }
 
         private void SendScreenList()
@@ -221,104 +227,123 @@ namespace NxDesk.Host
 
             await Task.Run(async () =>
             {
-                // Buffer para detección simple de movimiento (opcional pero recomendado)
-                byte[] lastFrameHash = null;
-
                 while (_isCapturing && _peerConnection != null)
                 {
                     var startTime = DateTime.Now;
 
                     try
                     {
-                        byte[] frameData = null;
-
-                        // Bloqueamos para capturar de forma segura
-                        lock (_captureLock)
+                        // 1. Capturar el Bitmap (Raw, sin comprimir a JPEG)
+                        using (var bitmap = CaptureScreenRaw())
                         {
-                            // Llamamos a la captura optimizada (ver Paso 2)
-                            frameData = CaptureScreenOptimized();
-                        }
+                            if (bitmap != null)
+                            {
+                                // 2. Convertir Bitmap a bytes crudos
+                                var rawBuffer = BitmapToBytes(bitmap);
 
-                        if (frameData != null && frameData.Length > 0)
-                        {
-                            // OPTIMIZACIÓN DE ANCHO DE BANDA:
-                            // Si el frame es idéntico al anterior (o muy similar por tamaño), lo saltamos.
-                            // Esto reduce el uso de red drásticamente cuando la pantalla está quieta.
-                            if (lastFrameHash != null && frameData.Length == lastFrameHash.Length)
-                            {
-                                // Si quieres ser más estricto, compara bytes, pero longitud es un filtro rápido barato.
-                                // En pantallas estáticas, esto elimina la "interferencia" por saturación.
-                            }
-                            else
-                            {
-                                uint timestamp = (uint)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
-                                _peerConnection.SendVideo(timestamp, frameData);
-                                lastFrameHash = frameData;
+                                // 3. Usar el Encoder VP8
+                                // EncodeVideo devuelve byte[] (la imagen completa ya comprimida)
+                                var encodedBuffer = _vpxEncoder.EncodeVideo(
+                                    bitmap.Width,
+                                    bitmap.Height,
+                                    rawBuffer,
+                                    SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.Bgra,
+                                    SIPSorceryMedia.Abstractions.VideoCodecsEnum.VP8);
+
+                                // 4. Enviar el frame completo si la codificación fue exitosa
+                                if (encodedBuffer != null && encodedBuffer.Length > 0)
+                                {
+                                    // Calculamos el timestamp actual
+                                    uint timestamp = (uint)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
+
+                                    // Enviamos el buffer directo. SIPSorcery se encarga de fragmentarlo en paquetes RTP.
+                                    _peerConnection.SendVideo(timestamp, encodedBuffer);
+                                }
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        // Ignorar errores puntuales para no romper el stream
+                        // Log de error
                     }
 
-                    // CONTROL DE FPS:
-                    // Calculamos cuánto tardó el proceso y esperamos solo lo necesario.
-                    // 20 FPS = 50ms por cuadro.
+                    // Control de FPS (apuntar a 30 FPS para fluidez)
                     var elapsed = (DateTime.Now - startTime).TotalMilliseconds;
-                    var waitTime = 50 - (int)elapsed;
-
-                    if (waitTime > 0)
-                        await Task.Delay(waitTime);
-                    else
-                        // Si tardamos mucho, cedemos el control un momento para no colgar la CPU
-                        await Task.Yield();
+                    var waitTime = 33 - (int)elapsed; // ~30 FPS
+                    if (waitTime > 0) await Task.Delay(waitTime);
                 }
             });
+        }
+        private Bitmap CaptureScreenRaw()
+        {
+            try
+            {
+                if (_currentScreenIndex >= _allScreens.Length) _currentScreenIndex = 0;
+                var bounds = _allScreens[_currentScreenIndex].Bounds;
+
+                // Redimensionado inteligente para rendimiento (opcional pero recomendado)
+                int width = bounds.Width > 1920 ? 1920 : bounds.Width;
+                int height = bounds.Width > 1920 ? (int)(bounds.Height * (1920f / bounds.Width)) : bounds.Height;
+
+                var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+                using (var g = Graphics.FromImage(bitmap))
+                {
+                    // Configuración rápida
+                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                    g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+                }
+                return bitmap;
+            }
+            catch { return null; }
+        }
+        private byte[] BitmapToBytes(Bitmap bmp)
+        {
+            BitmapData bmpData = null;
+            try
+            {
+                bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
+                int bytes = Math.Abs(bmpData.Stride) * bmp.Height;
+                byte[] rgbValues = new byte[bytes];
+                Marshal.Copy(bmpData.Scan0, rgbValues, 0, bytes);
+                return rgbValues;
+            }
+            finally
+            {
+                if (bmpData != null) bmp.UnlockBits(bmpData);
+            }
         }
 
         private byte[] CaptureScreenOptimized()
         {
             try
             {
-                // Validación de índice de pantalla
                 if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0) _currentScreenIndex = 0;
                 var bounds = _allScreens[_currentScreenIndex].Bounds;
 
-                // 1. DEFINIR TAMAÑO OBJETIVO (Downscaling)
-                // Si la pantalla es mayor a 1280x720 (HD), la reducimos. 
-                // Para escritorio remoto fluido, 1280x720 u 1600x900 es el estándar dorado.
                 int targetWidth = bounds.Width;
                 int targetHeight = bounds.Height;
 
-                if (targetWidth > 1600) // Si es muy grande (ej. 1920 o 4K)
+                if (targetWidth > 1600) 
                 {
                     float ratio = (float)bounds.Height / bounds.Width;
-                    targetWidth = 1600; // Forzar ancho máximo
+                    targetWidth = 1600; 
                     targetHeight = (int)(targetWidth * ratio);
                 }
 
-                // Creamos el bitmap con el tamaño ajustado directamente
                 using (var bitmap = new Bitmap(targetWidth, targetHeight, PixelFormat.Format32bppArgb))
                 using (var graphics = Graphics.FromImage(bitmap))
                 {
-                    // Configuración de calidad gráfica para que el redimensionado se vea nítido y no borroso
                     graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
                     graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bicubic;
                     graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighSpeed;
 
-                    // Copiamos y redimensionamos al vuelo (el driver lo hace rápido)
                     graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(targetWidth, targetHeight), CopyPixelOperation.SourceCopy);
 
-                    // Codificar a JPEG
                     using (var ms = new MemoryStream())
                     {
-                        // Buscamos el codec JPEG
                         var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.MimeType == "image/jpeg");
 
                         var encoderParams = new EncoderParameters(1);
-                        // CALIDAD: 75 es el balance perfecto. 
-                        // 60 se ve mal (bloques), 90 es muy pesado (lento).
                         encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 75L);
 
                         bitmap.Save(ms, encoder, encoderParams);
@@ -436,6 +461,7 @@ namespace NxDesk.Host
         public void Dispose()
         {
             _isCapturing = false;
+            _vpxEncoder?.Dispose();
             _screenCaptureTimer?.Dispose();
             _dataChannel?.close();
             _peerConnection?.close();
