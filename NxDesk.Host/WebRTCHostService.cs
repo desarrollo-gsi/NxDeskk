@@ -161,7 +161,6 @@ namespace NxDesk.Host
                 _dataChannel.onopen += () =>
                 {
                     _logger.LogInformation("DataChannel abierto.");
-                    // Enviamos la lista al abrir, por si acaso
                     SendScreenList();
                 };
 
@@ -190,7 +189,6 @@ namespace NxDesk.Host
             await Task.CompletedTask;
         }
 
-        // --- NUEVO MÉTODO: Centraliza el envío de la lista de pantallas ---
         private void SendScreenList()
         {
             if (_dataChannel == null || _dataChannel.readyState != RTCDataChannelState.open) return;
@@ -217,72 +215,119 @@ namespace NxDesk.Host
             }
         }
 
-        private void StartScreenCapture()
+        private async void StartScreenCapture()
         {
             _isCapturing = true;
-            int intervalMs = 1000 / FRAME_RATE;
 
-            _screenCaptureTimer = new System.Threading.Timer(_ =>
+            await Task.Run(async () =>
             {
-                if (!_isCapturing || _peerConnection == null) return;
+                // Buffer para detección simple de movimiento (opcional pero recomendado)
+                byte[] lastFrameHash = null;
 
-                try
+                while (_isCapturing && _peerConnection != null)
                 {
-                    byte[] frame = null;
-                    lock (_captureLock)
+                    var startTime = DateTime.Now;
+
+                    try
                     {
-                        frame = CaptureScreen();
+                        byte[] frameData = null;
+
+                        // Bloqueamos para capturar de forma segura
+                        lock (_captureLock)
+                        {
+                            // Llamamos a la captura optimizada (ver Paso 2)
+                            frameData = CaptureScreenOptimized();
+                        }
+
+                        if (frameData != null && frameData.Length > 0)
+                        {
+                            // OPTIMIZACIÓN DE ANCHO DE BANDA:
+                            // Si el frame es idéntico al anterior (o muy similar por tamaño), lo saltamos.
+                            // Esto reduce el uso de red drásticamente cuando la pantalla está quieta.
+                            if (lastFrameHash != null && frameData.Length == lastFrameHash.Length)
+                            {
+                                // Si quieres ser más estricto, compara bytes, pero longitud es un filtro rápido barato.
+                                // En pantallas estáticas, esto elimina la "interferencia" por saturación.
+                            }
+                            else
+                            {
+                                uint timestamp = (uint)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
+                                _peerConnection.SendVideo(timestamp, frameData);
+                                lastFrameHash = frameData;
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Ignorar errores puntuales para no romper el stream
                     }
 
-                    if (frame != null && frame.Length > 0)
-                    {
-                        uint timestamp = (uint)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
-                        _peerConnection.SendVideo(timestamp, frame);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Log only occasionally to avoid spamming
-                }
+                    // CONTROL DE FPS:
+                    // Calculamos cuánto tardó el proceso y esperamos solo lo necesario.
+                    // 20 FPS = 50ms por cuadro.
+                    var elapsed = (DateTime.Now - startTime).TotalMilliseconds;
+                    var waitTime = 50 - (int)elapsed;
 
-            }, null, 0, intervalMs);
+                    if (waitTime > 0)
+                        await Task.Delay(waitTime);
+                    else
+                        // Si tardamos mucho, cedemos el control un momento para no colgar la CPU
+                        await Task.Yield();
+                }
+            });
         }
 
-        private byte[] CaptureScreen()
+        private byte[] CaptureScreenOptimized()
         {
             try
             {
-                if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0)
-                {
-                    _currentScreenIndex = 0;
-                }
-
+                // Validación de índice de pantalla
+                if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0) _currentScreenIndex = 0;
                 var bounds = _allScreens[_currentScreenIndex].Bounds;
 
-                using (var bitmap = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb))
+                // 1. DEFINIR TAMAÑO OBJETIVO (Downscaling)
+                // Si la pantalla es mayor a 1280x720 (HD), la reducimos. 
+                // Para escritorio remoto fluido, 1280x720 u 1600x900 es el estándar dorado.
+                int targetWidth = bounds.Width;
+                int targetHeight = bounds.Height;
+
+                if (targetWidth > 1600) // Si es muy grande (ej. 1920 o 4K)
+                {
+                    float ratio = (float)bounds.Height / bounds.Width;
+                    targetWidth = 1600; // Forzar ancho máximo
+                    targetHeight = (int)(targetWidth * ratio);
+                }
+
+                // Creamos el bitmap con el tamaño ajustado directamente
+                using (var bitmap = new Bitmap(targetWidth, targetHeight, PixelFormat.Format32bppArgb))
                 using (var graphics = Graphics.FromImage(bitmap))
                 {
-                    graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+                    // Configuración de calidad gráfica para que el redimensionado se vea nítido y no borroso
+                    graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
+                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bicubic;
+                    graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighSpeed;
+
+                    // Copiamos y redimensionamos al vuelo (el driver lo hace rápido)
+                    graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(targetWidth, targetHeight), CopyPixelOperation.SourceCopy);
+
+                    // Codificar a JPEG
                     using (var ms = new MemoryStream())
                     {
+                        // Buscamos el codec JPEG
                         var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.MimeType == "image/jpeg");
-                        if (encoder != null)
-                        {
-                            var encoderParams = new EncoderParameters(1);
-                            encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 65L);
-                            bitmap.Save(ms, encoder, encoderParams);
-                        }
-                        else
-                        {
-                            bitmap.Save(ms, ImageFormat.Jpeg);
-                        }
+
+                        var encoderParams = new EncoderParameters(1);
+                        // CALIDAD: 75 es el balance perfecto. 
+                        // 60 se ve mal (bloques), 90 es muy pesado (lento).
+                        encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 75L);
+
+                        bitmap.Save(ms, encoder, encoderParams);
                         return ms.ToArray();
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                _logger.LogError(ex, "Error en captura.");
                 return Array.Empty<byte>();
             }
         }

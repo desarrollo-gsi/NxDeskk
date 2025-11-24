@@ -103,13 +103,10 @@ namespace NxDesk.Client.Services
 
             _dataChannel = await _peerConnection.createDataChannel("input-channel");
 
-            // --- MODIFICADO: Pedir pantallas al abrir el canal ---
             _dataChannel.onopen += () =>
             {
                 OnConnectionStateChanged?.Invoke("Canal de datos abierto. Solicitando pantallas...");
                 _logger.LogInformation("Data channel abierto");
-
-                // Enviamos solicitud explícita
                 RequestScreenList();
             };
 
@@ -146,7 +143,6 @@ namespace NxDesk.Client.Services
             await CreateOfferAsync();
         }
 
-        // --- NUEVO MÉTODO: Enviar solicitud de pantallas ---
         private void RequestScreenList()
         {
             if (_dataChannel != null && _dataChannel.readyState == RTCDataChannelState.open)
