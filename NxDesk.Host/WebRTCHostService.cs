@@ -267,7 +267,6 @@ namespace NxDesk.Host
                         // Log de error
                     }
 
-                    // Control de FPS (apuntar a 30 FPS para fluidez)
                     var elapsed = (DateTime.Now - startTime).TotalMilliseconds;
                     var waitTime = 33 - (int)elapsed; // ~30 FPS
                     if (waitTime > 0) await Task.Delay(waitTime);
@@ -281,14 +280,12 @@ namespace NxDesk.Host
                 if (_currentScreenIndex >= _allScreens.Length) _currentScreenIndex = 0;
                 var bounds = _allScreens[_currentScreenIndex].Bounds;
 
-                // Redimensionado inteligente para rendimiento (opcional pero recomendado)
                 int width = bounds.Width > 1920 ? 1920 : bounds.Width;
                 int height = bounds.Width > 1920 ? (int)(bounds.Height * (1920f / bounds.Width)) : bounds.Height;
 
                 var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
                 using (var g = Graphics.FromImage(bitmap))
                 {
-                    // Configuración rápida
                     g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
                     g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
                 }
@@ -413,18 +410,23 @@ namespace NxDesk.Host
                     case "mousemove":
                         if (input.X.HasValue && input.Y.HasValue)
                         {
-                            var screenBounds = _allScreens[_currentScreenIndex].Bounds;
-                            double absX = screenBounds.X + (input.X.Value * screenBounds.Width);
-                            double absY = screenBounds.Y + (input.Y.Value * screenBounds.Height);
                             InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
                         }
                         break;
 
                     case "mousedown":
+                        if (input.X.HasValue && input.Y.HasValue)
+                        {
+                            InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
+                        }
                         InputSimulator.SimulateMouseDown(input.Button);
                         break;
 
                     case "mouseup":
+                        if (input.X.HasValue && input.Y.HasValue)
+                        {
+                            InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
+                        }
                         InputSimulator.SimulateMouseUp(input.Button);
                         break;
 

@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
 	<OutputType>Exe</OutputType>
     <UserSecretsId>dotnet-NxDesk.Host-efd0d881-0489-4663-9ea4-8e14e89311b2</UserSecretsId>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>
