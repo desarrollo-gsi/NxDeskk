@@ -12,10 +12,15 @@ using System.Windows.Forms;
 using SdpMessage = NxDesk.Core.DTOs.SdpMessage;
 using SIPSorceryMedia.Encoders;
 using System.Runtime.InteropServices;
+using System.Drawing.Drawing2D;
+
 namespace NxDesk.Host
 {
     public class WebRTCHostService : IDisposable
     {
+        [DllImport("user32.dll")]
+        private static extern bool SetProcessDPIAware();
+
         private readonly VpxVideoEncoder _vpxEncoder;
         private readonly string _roomId;
         private readonly string _serverUrl;
@@ -26,9 +31,7 @@ namespace NxDesk.Host
         private HubConnection _hubConnection;
         private RTCPeerConnection _peerConnection;
         private RTCDataChannel _dataChannel;
-        private System.Threading.Timer _screenCaptureTimer;
         private bool _isCapturing = false;
-        private const int FRAME_RATE = 20;
 
         private int _currentScreenIndex = 0;
         private Screen[] _allScreens;
@@ -36,31 +39,31 @@ namespace NxDesk.Host
 
         public WebRTCHostService(ILogger<WebRTCHostService> logger, IConfiguration configuration)
         {
+            try { SetProcessDPIAware(); } catch { }
+
             _logger = logger;
 
             _serverUrl = configuration.GetValue<string>("SignalR:ServerUrl");
             if (string.IsNullOrEmpty(_serverUrl) || _serverUrl.Contains("[IP_DE_TU_SERVIDOR]"))
             {
-                _logger.LogError("SignalR:ServerUrl no válido en appsettings.json. Usando localhost por defecto.");
                 _serverUrl = "https://localhost:7099/signalinghub";
             }
 
             _identityService = new IdentityService();
             _roomId = _identityService.MyID;
 
-            _allScreens = Screen.AllScreens;
-            _logger.LogInformation("Pantallas detectadas: {ScreenCount}", _allScreens.Length);
-            for (int i = 0; i < _allScreens.Length; i++)
-            {
-                _logger.LogInformation("  - Pantalla {Index}: {DeviceName}", i, _allScreens[i].DeviceName);
-            }
+            RefreshScreens();
 
-            _logger.LogInformation("IdentityService cargado. Este Host ID es: {HostID}", _roomId);
+            _logger.LogInformation("IdentityService cargado. Host ID: {HostID}", _roomId);
 
             _discoveryService = new NetworkDiscoveryService(_identityService.MyID, _identityService.MyAlias);
             _vpxEncoder = new VpxVideoEncoder();
+        }
 
-            _logger.LogInformation("Encoder VP8 inicializado.");
+        private void RefreshScreens()
+        {
+            _allScreens = Screen.AllScreens;
+            _logger.LogInformation("Pantallas detectadas: {ScreenCount}", _allScreens.Length);
         }
 
         public async Task StartAsync()
@@ -96,7 +99,7 @@ namespace NxDesk.Host
             try
             {
                 await _hubConnection.StartAsync();
-                _logger.LogInformation("Conectado a SignalR. Uniéndose a la sala: {RoomId}", _roomId);
+                _logger.LogInformation("Conectado a SignalR. Sala: {RoomId}", _roomId);
                 await _hubConnection.InvokeAsync("JoinRoom", _roomId);
             }
             catch (Exception ex)
@@ -156,8 +159,7 @@ namespace NxDesk.Host
             var videoTrack = new MediaStreamTrack(videoFormats, MediaStreamStatusEnum.SendOnly);
             _peerConnection.addTrack(videoTrack);
 
-            StartScreenCapture();
-            _logger.LogInformation("Captura de pantalla iniciada.");
+            _isCapturing = false;
 
             _peerConnection.ondatachannel += (dc) =>
             {
@@ -173,8 +175,6 @@ namespace NxDesk.Host
                 {
                     OnInputReceived(channel, protocol, data);
                 };
-
-                _logger.LogInformation("Canal de datos '{Label}' abierto.", dc.label);
             };
 
             _peerConnection.onicecandidate += async (candidate) =>
@@ -192,16 +192,18 @@ namespace NxDesk.Host
             };
 
             await Task.CompletedTask;
+            // Iniciar el loop de captura
             StartScreenCapture();
         }
 
         private void SendScreenList()
         {
+            RefreshScreens();
+
             if (_dataChannel == null || _dataChannel.readyState != RTCDataChannelState.open) return;
 
             try
             {
-                _allScreens = Screen.AllScreens;
                 var screenNames = _allScreens.Select((s, i) => $"Pantalla {i + 1} ({s.Bounds.Width}x{s.Bounds.Height})").ToList();
 
                 var screenInfo = new ScreenInfoPayload { ScreenNames = screenNames };
@@ -213,7 +215,7 @@ namespace NxDesk.Host
                 };
 
                 _dataChannel.send(JsonConvert.SerializeObject(message));
-                _logger.LogInformation("Lista de pantallas enviada al cliente ({Count} pantallas).", screenNames.Count);
+                _logger.LogInformation("Lista enviada: {Count} pantallas.", screenNames.Count);
             }
             catch (Exception ex)
             {
@@ -223,6 +225,7 @@ namespace NxDesk.Host
 
         private async void StartScreenCapture()
         {
+            if (_isCapturing) return;
             _isCapturing = true;
 
             await Task.Run(async () =>
@@ -233,16 +236,12 @@ namespace NxDesk.Host
 
                     try
                     {
-                        // 1. Capturar el Bitmap (Raw, sin comprimir a JPEG)
                         using (var bitmap = CaptureScreenRaw())
                         {
                             if (bitmap != null)
                             {
-                                // 2. Convertir Bitmap a bytes crudos
                                 var rawBuffer = BitmapToBytes(bitmap);
 
-                                // 3. Usar el Encoder VP8
-                                // EncodeVideo devuelve byte[] (la imagen completa ya comprimida)
                                 var encodedBuffer = _vpxEncoder.EncodeVideo(
                                     bitmap.Width,
                                     bitmap.Height,
@@ -250,13 +249,9 @@ namespace NxDesk.Host
                                     SIPSorceryMedia.Abstractions.VideoPixelFormatsEnum.Bgra,
                                     SIPSorceryMedia.Abstractions.VideoCodecsEnum.VP8);
 
-                                // 4. Enviar el frame completo si la codificación fue exitosa
                                 if (encodedBuffer != null && encodedBuffer.Length > 0)
                                 {
-                                    // Calculamos el timestamp actual
                                     uint timestamp = (uint)(DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond);
-
-                                    // Enviamos el buffer directo. SIPSorcery se encarga de fragmentarlo en paquetes RTP.
                                     _peerConnection.SendVideo(timestamp, encodedBuffer);
                                 }
                             }
@@ -264,44 +259,86 @@ namespace NxDesk.Host
                     }
                     catch (Exception ex)
                     {
-                        // Log de error
                     }
 
                     var elapsed = (DateTime.Now - startTime).TotalMilliseconds;
-                    var waitTime = 33 - (int)elapsed; // ~30 FPS
+                    var waitTime = 50 - (int)elapsed;
                     if (waitTime > 0) await Task.Delay(waitTime);
                 }
             });
         }
+
         private Bitmap CaptureScreenRaw()
         {
             try
             {
-                if (_currentScreenIndex >= _allScreens.Length) _currentScreenIndex = 0;
+                if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0)
+                {
+                    RefreshScreens(); 
+                    _currentScreenIndex = 0;
+                }
+
+                if (_allScreens.Length == 0) return null;
+
                 var bounds = _allScreens[_currentScreenIndex].Bounds;
 
-                int width = bounds.Width > 1920 ? 1920 : bounds.Width;
-                int height = bounds.Width > 1920 ? (int)(bounds.Height * (1920f / bounds.Width)) : bounds.Height;
+                int targetWidth = bounds.Width;
+                int targetHeight = bounds.Height;
 
-                var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-                using (var g = Graphics.FromImage(bitmap))
+                if (targetWidth > 1920)
                 {
-                    g.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
-                    g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(width, height), CopyPixelOperation.SourceCopy);
+                    float ratio = (float)bounds.Height / bounds.Width;
+                    targetWidth = 1920;
+                    targetHeight = (int)(targetWidth * ratio);
                 }
-                return bitmap;
+
+                var finalBitmap = new Bitmap(targetWidth, targetHeight, PixelFormat.Format32bppArgb);
+
+                using (var g = Graphics.FromImage(finalBitmap))
+                {
+                    g.CompositingMode = CompositingMode.SourceCopy;
+                    g.InterpolationMode = InterpolationMode.Bilinear; 
+                    g.PixelOffsetMode = PixelOffsetMode.HighSpeed;
+
+                    if (targetWidth == bounds.Width && targetHeight == bounds.Height)
+                    {
+                        g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+                    }
+                    else
+                    {
+                        using (var fullScreenBmp = new Bitmap(bounds.Width, bounds.Height, PixelFormat.Format32bppArgb))
+                        using (var gFull = Graphics.FromImage(fullScreenBmp))
+                        {
+                            gFull.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size, CopyPixelOperation.SourceCopy);
+
+                            g.DrawImage(fullScreenBmp, 0, 0, targetWidth, targetHeight);
+                        }
+                    }
+                }
+                return finalBitmap;
             }
             catch { return null; }
         }
+
         private byte[] BitmapToBytes(Bitmap bmp)
         {
             BitmapData bmpData = null;
             try
             {
                 bmpData = bmp.LockBits(new Rectangle(0, 0, bmp.Width, bmp.Height), ImageLockMode.ReadOnly, bmp.PixelFormat);
-                int bytes = Math.Abs(bmpData.Stride) * bmp.Height;
-                byte[] rgbValues = new byte[bytes];
-                Marshal.Copy(bmpData.Scan0, rgbValues, 0, bytes);
+
+                int bytesPerPixel = 4; 
+                int widthInBytes = bmp.Width * bytesPerPixel;
+                int size = widthInBytes * bmp.Height;
+                byte[] rgbValues = new byte[size];
+
+                for (int y = 0; y < bmp.Height; y++)
+                {
+                    IntPtr rowPtr = IntPtr.Add(bmpData.Scan0, y * bmpData.Stride);
+
+                    Marshal.Copy(rowPtr, rgbValues, y * widthInBytes, widthInBytes);
+                }
+
                 return rgbValues;
             }
             finally
@@ -310,54 +347,11 @@ namespace NxDesk.Host
             }
         }
 
-        private byte[] CaptureScreenOptimized()
-        {
-            try
-            {
-                if (_currentScreenIndex >= _allScreens.Length || _currentScreenIndex < 0) _currentScreenIndex = 0;
-                var bounds = _allScreens[_currentScreenIndex].Bounds;
-
-                int targetWidth = bounds.Width;
-                int targetHeight = bounds.Height;
-
-                if (targetWidth > 1600) 
-                {
-                    float ratio = (float)bounds.Height / bounds.Width;
-                    targetWidth = 1600; 
-                    targetHeight = (int)(targetWidth * ratio);
-                }
-
-                using (var bitmap = new Bitmap(targetWidth, targetHeight, PixelFormat.Format32bppArgb))
-                using (var graphics = Graphics.FromImage(bitmap))
-                {
-                    graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
-                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.Bicubic;
-                    graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighSpeed;
-
-                    graphics.CopyFromScreen(bounds.X, bounds.Y, 0, 0, new Size(targetWidth, targetHeight), CopyPixelOperation.SourceCopy);
-
-                    using (var ms = new MemoryStream())
-                    {
-                        var encoder = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.MimeType == "image/jpeg");
-
-                        var encoderParams = new EncoderParameters(1);
-                        encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 75L);
-
-                        bitmap.Save(ms, encoder, encoderParams);
-                        return ms.ToArray();
-                    }
-                }
-            }
-            catch
-            {
-                return Array.Empty<byte>();
-            }
-        }
-
         private void SwitchCaptureScreen(int screenIndex)
         {
             lock (_captureLock)
             {
+                RefreshScreens(); // Asegurarnos de tener la lista actualizada
                 if (screenIndex >= 0 && screenIndex < _allScreens.Length)
                 {
                     _logger.LogInformation("Cambiando a Pantalla {Index}", screenIndex);
@@ -395,7 +389,7 @@ namespace NxDesk.Host
 
                 if (message.Type == "system:get_screens")
                 {
-                    _logger.LogInformation("Recibida solicitud de lista de pantallas.");
+                    _logger.LogInformation("Recibida solicitud de pantallas.");
                     SendScreenList();
                     return;
                 }
@@ -405,52 +399,30 @@ namespace NxDesk.Host
                 var input = JsonConvert.DeserializeObject<InputEvent>(message.Payload);
                 if (input == null) return;
 
+                // Lógica de inputs (sin cambios mayores)
                 switch (input.EventType)
                 {
                     case "mousemove":
                         if (input.X.HasValue && input.Y.HasValue)
-                        {
                             InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
-                        }
                         break;
-
                     case "mousedown":
-                        if (input.X.HasValue && input.Y.HasValue)
-                        {
-                            InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
-                        }
                         InputSimulator.SimulateMouseDown(input.Button);
                         break;
-
                     case "mouseup":
-                        if (input.X.HasValue && input.Y.HasValue)
-                        {
-                            InputSimulator.SimulateMouseMove(input.X.Value, input.Y.Value, _currentScreenIndex);
-                        }
                         InputSimulator.SimulateMouseUp(input.Button);
                         break;
-
                     case "mousewheel":
-                        if (input.Delta.HasValue)
-                            InputSimulator.SimulateMouseWheel((int)input.Delta.Value);
+                        if (input.Delta.HasValue) InputSimulator.SimulateMouseWheel((int)input.Delta.Value);
                         break;
-
                     case "keydown":
                     case "keyup":
-                        if (!string.IsNullOrEmpty(input.Key))
-                        {
-                            if (Enum.TryParse<Keys>(input.Key, true, out Keys winKey))
-                            {
-                                InputSimulator.SimulateKeyEvent((byte)winKey, input.EventType == "keydown");
-                            }
-                        }
+                        if (!string.IsNullOrEmpty(input.Key) && Enum.TryParse<Keys>(input.Key, true, out Keys winKey))
+                            InputSimulator.SimulateKeyEvent((byte)winKey, input.EventType == "keydown");
                         break;
-
                     case "control":
                         if (input.Command == "switch_screen" && input.Value.HasValue)
-                        {
                             SwitchCaptureScreen(input.Value.Value);
-                        }
                         break;
                 }
             }
@@ -464,7 +436,6 @@ namespace NxDesk.Host
         {
             _isCapturing = false;
             _vpxEncoder?.Dispose();
-            _screenCaptureTimer?.Dispose();
             _dataChannel?.close();
             _peerConnection?.close();
             _discoveryService?.Stop();

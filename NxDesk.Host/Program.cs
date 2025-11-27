@@ -1,11 +1,15 @@
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 
 namespace NxDesk.Host
 {
     public class Program
     {
+        [DllImport("user32.dll")]
+        private static extern bool SetProcessDPIAware();
         public static async Task Main(string[] args)
         {
+            try { SetProcessDPIAware(); } catch { }
             bool esAdmin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
             Console.ForegroundColor = esAdmin ? ConsoleColor.Green : ConsoleColor.Red;
             Console.WriteLine("==============================================");
